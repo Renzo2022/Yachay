@@ -1,5 +1,6 @@
 import { createPhase1Defaults, type Phase1Data } from '../phase1_planning/types.ts'
 import type { ExternalPaper } from '../phase2_search/types.ts'
+import type { QualityLevel } from '../phase4_quality/types.ts'
 
 export interface Project {
   id: string
@@ -27,6 +28,9 @@ export interface Candidate extends ExternalPaper {
   userConfirmed?: boolean
   processedAt?: number
   savedAt: number
+  qualityStatus?: 'pending' | 'completed'
+  qualityLevel?: QualityLevel
+  qualityScore?: number
 }
 
 export interface PrismaData {

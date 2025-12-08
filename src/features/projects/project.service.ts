@@ -21,6 +21,7 @@ import {
   type Candidate,
   type PrismaData,
 } from './types.ts'
+import type { QualityAssessment } from '../phase4_quality/types.ts'
 import type { Phase1Data } from '../phase1_planning/types.ts'
 import type { ExternalPaper } from '../phase2_search/types.ts'
 
@@ -60,6 +61,8 @@ export const listenToProjects = (userId: string, callback: (projects: Project[])
 const getProjectDocRef = (projectId: string) => doc(projectsCollection, projectId)
 const getCandidatesCollection = (projectId: string) => collection(getProjectDocRef(projectId), 'candidates')
 const getIncludedCollection = (projectId: string) => collection(getProjectDocRef(projectId), 'included_studies')
+const getQualityAssessmentsCollection = (projectId: string) =>
+  collection(getProjectDocRef(projectId), 'quality_assessments')
 const getPrismaDocRef = (projectId: string) => doc(collection(getProjectDocRef(projectId), 'prisma'), 'stats')
 
 export const listenToProject = (projectId: string, callback: (project: Project | null) => void): Unsubscribe => {
@@ -122,8 +125,48 @@ export const confirmCandidateDecision = async (projectId: string, candidate: Can
       ...candidate,
       decision: 'include',
       confirmedAt: Date.now(),
+      qualityStatus: 'pending',
     })
   }
+}
+
+export const listenToIncludedStudies = (projectId: string, callback: (studies: Candidate[]) => void): Unsubscribe => {
+  return onSnapshot(getIncludedCollection(projectId), (snapshot) => {
+    const items = snapshot.docs.map((docSnapshot) => {
+      const data = docSnapshot.data() as Candidate
+      return { ...data, id: data.id ?? docSnapshot.id }
+    })
+    callback(items)
+  })
+}
+
+export const listenToQualityAssessments = (
+  projectId: string,
+  callback: (assessments: QualityAssessment[]) => void,
+): Unsubscribe => {
+  return onSnapshot(getQualityAssessmentsCollection(projectId), (snapshot) => {
+    const items = snapshot.docs.map((docSnapshot) => docSnapshot.data() as QualityAssessment)
+    callback(items)
+  })
+}
+
+export const saveQualityAssessment = async (projectId: string, assessment: QualityAssessment) => {
+  const assessmentRef = doc(getQualityAssessmentsCollection(projectId), assessment.id)
+  const includedRef = doc(getIncludedCollection(projectId), assessment.studyId)
+
+  await Promise.all([
+    setDoc(assessmentRef, assessment, { merge: true }),
+    setDoc(
+      includedRef,
+      {
+        qualityStatus: 'completed',
+        qualityLevel: assessment.qualityLevel,
+        qualityScore: assessment.totalScore,
+      },
+      { merge: true },
+    ),
+    updateDoc(getProjectDocRef(projectId), { updatedAt: Date.now() }),
+  ])
 }
 
 export const listenToPrismaData = (projectId: string, callback: (data: PrismaData) => void): Unsubscribe => {
