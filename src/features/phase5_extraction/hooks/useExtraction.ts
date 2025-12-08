@@ -6,6 +6,7 @@ import { listenToIncludedStudies } from '../../projects/project.service.ts'
 import { listenToExtractionMatrix, saveExtractionEntry } from '../../../services/extraction.service.ts'
 import { extractTextFromPdf, truncateText } from '../../../services/pdf.service.ts'
 import { extractDataRAG } from '../../../services/ai.service.ts'
+import { useToast } from '../../../core/toast/ToastProvider.tsx'
 
 export const RAG_STEPS = ['Leyendo PDF...', 'Truncando texto...', 'Consultando LLM...', 'Parseando JSON...']
 
@@ -23,6 +24,7 @@ export const useExtraction = (projectId: string) => {
   const [ragState, setRagState] = useState<RagState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [lastPreview, setLastPreview] = useState<string>('')
+  const { showToast } = useToast()
 
   useEffect(() => {
     if (!projectId) return
@@ -99,23 +101,26 @@ export const useExtraction = (projectId: string) => {
 
         await saveExtractionEntry(projectId, entry)
         setRagState({ studyId: study.id, stepIndex: RAG_STEPS.length - 1, label: 'Extracción completada', running: false })
+        showToast({ type: 'success', message: `Extracción generada para "${study.title}"` })
         setTimeout(() => setRagState(null), 2000)
         return entry
       } catch (ex) {
         const message = ex instanceof Error ? ex.message : 'No se pudo completar la extracción'
         setError(message)
+        showToast({ type: 'error', message })
         setRagState(null)
         throw ex
       }
     },
-    [getExtractionForStudy, projectId],
+    [getExtractionForStudy, projectId, showToast],
   )
 
   const saveExtraction = useCallback(
     async (data: ExtractionData) => {
       await saveExtractionEntry(projectId, data)
+      showToast({ type: 'success', message: 'Datos de extracción guardados' })
     },
-    [projectId],
+    [projectId, showToast],
   )
 
   return {
