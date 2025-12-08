@@ -1,3 +1,5 @@
+import type { Phase1Data } from '../features/phase1_planning/types.ts'
+
 export type GeneratedProtocolPayload = {
   topic: string
   protocol: {
@@ -45,5 +47,25 @@ export const generateProtocolFromTemplate = async (topic: string): Promise<Gener
     topic,
     protocol: PROTOCOL_RESPONSE,
     generatedAt: Date.now(),
+  }
+}
+
+export const generatePhase1Protocol = async (topic: string): Promise<Phase1Data> => {
+  await new Promise((resolve) => setTimeout(resolve, 1800))
+  return {
+    mainQuestion: `¿Cómo impacta ${topic} en los resultados de aprendizaje y retención en contextos STEM?`,
+    subquestions: [
+      `¿Qué métricas definen el éxito de ${topic}?`,
+      `¿Qué poblaciones obtienen mayor beneficio al aplicar ${topic}?`,
+    ],
+    objectives: `Evaluar rigurosamente la eficacia de ${topic} combinando métricas cuantitativas (engagement, retención) y cualitativas (percepción docente).`,
+    pico: {
+      population: 'Estudiantes universitarios en programas STEM',
+      intervention: `${topic} potenciadas con analítica e IA`,
+      comparison: 'Metodologías tradicionales sin gamificación / IA',
+      outcome: 'Mejora en aprendizaje basado en evidencia y reducción de deserción',
+    },
+    inclusionCriteria: ['Estudios 2019-2025', 'Muestran métricas cuantitativas', 'Contextos STEM o salud'],
+    exclusionCriteria: ['Artículos sin revisión por pares', 'Estudios sin datos replicables'],
   }
 }

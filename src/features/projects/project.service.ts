@@ -16,6 +16,7 @@ import { firestore } from '../../services/firebase/firebase.ts'
 import type { Project } from './types.ts'
 import { createProjectDefaults } from './types.ts'
 import type { Phase1Data } from '../phase1_planning/types.ts'
+import type { ExternalPaper } from '../phase2_search/types.ts'
 
 const projectsCollection = collection(firestore, 'projects')
 
@@ -67,6 +68,26 @@ export const updateProjectPhase1 = async (projectId: string, phase1: Phase1Data)
   const projectRef = getProjectDocRef(projectId)
   await updateDoc(projectRef, {
     phase1,
+    updatedAt: Date.now(),
+  })
+}
+
+export const saveProjectCandidates = async (projectId: string, papers: ExternalPaper[]) => {
+  const candidatesCollection = collection(getProjectDocRef(projectId), 'candidates')
+  const timestamp = Date.now()
+  await Promise.all(
+    papers.map((paper) =>
+      setDoc(
+        doc(candidatesCollection, paper.id),
+        {
+          ...paper,
+          savedAt: timestamp,
+        },
+        { merge: true },
+      ),
+    ),
+  )
+  await updateDoc(getProjectDocRef(projectId), {
     updatedAt: Date.now(),
   })
 }
