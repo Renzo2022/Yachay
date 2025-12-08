@@ -1,17 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BrutalButton } from '../../../core/ui-kit/BrutalButton.tsx'
 import { useAuth } from '../../auth/AuthContext.tsx'
-import type { Project, PhaseKey } from '../types.ts'
+import type { Project } from '../types.ts'
 import { createProject, listenToProjects } from '../project.service.ts'
 import { ProjectCard } from '../components/ProjectCard.tsx'
 import { CreateProjectModal } from '../components/CreateProjectModal.tsx'
 import { TemplateSelector } from '../components/TemplateSelector.tsx'
 import type { GeneratedProtocolPayload } from '../../../services/ai.service.ts'
-
-const phaseLabels: Record<PhaseKey, string> = {
-  phase1: 'Fase 1 · Planificación',
-  phase7: 'Fase 7 · Reporte',
-}
 
 export const DashboardView = () => {
   const { user } = useAuth()
@@ -43,11 +38,12 @@ export const DashboardView = () => {
       templateUsed: templateId,
       phase1: {
         mainQuestion: payload.protocol.mainQuestion,
+        subquestions: [],
+        objectives: '',
         pico: payload.protocol.pico,
         inclusionCriteria: payload.protocol.inclusionCriteria,
         exclusionCriteria: payload.protocol.exclusionCriteria,
       },
-      phase7: 'Fase 7 · Reporte',
       completedTasks: 3,
     })
     setStatusMessage('Protocolo IA listo. Proyecto creado 🚀')
@@ -55,6 +51,10 @@ export const DashboardView = () => {
   }
 
   const hasProjects = projects.length > 0
+  const sortedProjects = useMemo(
+    () => [...projects].sort((a, b) => b.updatedAt - a.updatedAt),
+    [projects],
+  )
 
   return (
     <section className="space-y-8">
@@ -93,7 +93,7 @@ export const DashboardView = () => {
         </div>
       ) : hasProjects ? (
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {projects.map((project) => (
+          {sortedProjects.map((project) => (
             <ProjectCard key={project.id} project={project} />
           ))}
         </div>

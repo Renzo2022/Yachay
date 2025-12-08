@@ -2,7 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { BrutalButton } from '../ui-kit/BrutalButton.tsx'
 import { useAuth } from '../../features/auth/AuthContext.tsx'
 
-const dashboardLinks = [{ path: '/', label: 'Dashboard' }]
+const dashboardLinks = [{ path: '/dashboard', label: 'Dashboard' }]
 
 export const AppLayout = () => {
   const { signOut } = useAuth()

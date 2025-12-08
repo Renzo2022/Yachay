@@ -11,14 +11,16 @@ import { Phase4View } from '../../features/phase4_quality/views/Phase4View'
 import { Phase5View } from '../../features/phase5_extraction/views/Phase5View'
 import { Phase6View } from '../../features/phase6_synthesis/views/Phase6View'
 import { Phase7View } from '../../features/phase7_report/views/Phase7View'
+import { LandingGate } from '../../features/landing/LandingGate'
 
 export const AppRouter = () => (
   <BrowserRouter>
     <Routes>
+      <Route path="/" element={<LandingGate />} />
       <Route path="/login" element={<LoginView />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<DashboardView />} />
+          <Route path="/dashboard" element={<DashboardView />} />
         </Route>
         <Route path="/project/:projectId" element={<ProjectLayout />}>
           <Route index element={<Navigate to="phase1" replace />} />
