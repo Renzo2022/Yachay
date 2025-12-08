@@ -1,5 +1,6 @@
 import type { Phase1Data } from '../features/phase1_planning/types.ts'
 import type { Candidate } from '../features/projects/types.ts'
+import type { ExtractionPayload } from '../features/phase5_extraction/types.ts'
 
 export type GeneratedProtocolPayload = {
   topic: string
@@ -103,4 +104,38 @@ export const generatePhase1Protocol = async (topic: string): Promise<Phase1Data>
     inclusionCriteria: ['Estudios 2019-2025', 'Muestran métricas cuantitativas', 'Contextos STEM o salud'],
     exclusionCriteria: ['Artículos sin revisión por pares', 'Estudios sin datos replicables'],
   }
+}
+
+const SAMPLE_EXTRACTION: ExtractionPayload = {
+  sample: {
+    size: 128,
+    description: 'Docentes universitarios y estudiantes de ingeniería divididos en grupos control y experimental.',
+  },
+  methodology: {
+    design: 'Ensayo controlado con mediciones pre y post intervención.',
+    duration: '16 semanas',
+  },
+  intervention: {
+    description: 'Uso de plataforma de IA para retroalimentación automática y dashboards de progreso.',
+    tools: ['Plataforma IA', 'Dashboard analítico', 'Bot de retroalimentación'],
+  },
+  outcomes: {
+    primary: 'Mejora del 18% en precisión de evaluaciones y reducción de 22% en tiempos de retroalimentación.',
+    results: 'p < 0.05 para métricas de coherencia y satisfacción estudiantil.',
+  },
+  limitations: ['Muestra concentrada en un solo país', 'Sin seguimiento longitudinal'],
+}
+
+export const extractDataRAG = async (_pdfText: string): Promise<ExtractionPayload> => {
+  const hasApiKey = Boolean(import.meta.env.VITE_GROQ_API_KEY)
+  const simulatedDelay = async () => new Promise((resolve) => setTimeout(resolve, 1200))
+
+  if (!hasApiKey) {
+    await simulatedDelay()
+    return SAMPLE_EXTRACTION
+  }
+
+  // TODO: Integrar Groq real cuando haya API key.
+  await simulatedDelay()
+  return SAMPLE_EXTRACTION
 }

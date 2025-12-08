@@ -31,6 +31,8 @@ export interface Candidate extends ExternalPaper {
   qualityStatus?: 'pending' | 'completed'
   qualityLevel?: QualityLevel
   qualityScore?: number
+  extractionStatus?: 'pending' | 'extracted' | 'verified'
+  extractionId?: string
 }
 
 export interface PrismaData {

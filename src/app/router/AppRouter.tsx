@@ -8,6 +8,7 @@ import { Phase1View } from '../../features/phase1_planning/views/Phase1View'
 import { Phase2View } from '../../features/phase2_search/views/Phase2View'
 import { Phase3View } from '../../features/phase3_screening/views/Phase3View'
 import { Phase4View } from '../../features/phase4_quality/views/Phase4View'
+import { Phase5View } from '../../features/phase5_extraction/views/Phase5View'
 
 export const AppRouter = () => (
   <BrowserRouter>
@@ -23,6 +24,7 @@ export const AppRouter = () => (
           <Route path="phase2" element={<Phase2View />} />
           <Route path="phase3" element={<Phase3View />} />
           <Route path="phase4" element={<Phase4View />} />
+          <Route path="phase5" element={<Phase5View />} />
         </Route>
       </Route>
     </Routes>
