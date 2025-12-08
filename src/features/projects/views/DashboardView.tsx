@@ -1,12 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BrutalButton } from '../../../core/ui-kit/BrutalButton.tsx'
 import { useAuth } from '../../auth/AuthContext.tsx'
-import type { Project } from '../types.ts'
+import type { Project, PhaseKey } from '../types.ts'
 import { createProject, listenToProjects } from '../project.service.ts'
 import { ProjectCard } from '../components/ProjectCard.tsx'
 import { CreateProjectModal } from '../components/CreateProjectModal.tsx'
 import { TemplateSelector } from '../components/TemplateSelector.tsx'
 import type { GeneratedProtocolPayload } from '../../../services/ai.service.ts'
+
+const phaseLabels: Record<PhaseKey, string> = {
+  phase1: 'Fase 1 · Planificación',
+  phase7: 'Fase 7 · Reporte',
+}
 
 export const DashboardView = () => {
   const { user } = useAuth()
@@ -42,6 +47,7 @@ export const DashboardView = () => {
         inclusionCriteria: payload.protocol.inclusionCriteria,
         exclusionCriteria: payload.protocol.exclusionCriteria,
       },
+      phase7: 'Fase 7 · Reporte',
       completedTasks: 3,
     })
     setStatusMessage('Protocolo IA listo. Proyecto creado 🚀')

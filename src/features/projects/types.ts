@@ -2,6 +2,8 @@ import { createPhase1Defaults, type Phase1Data } from '../phase1_planning/types.
 import type { ExternalPaper } from '../phase2_search/types.ts'
 import type { QualityLevel } from '../phase4_quality/types.ts'
 
+export type PhaseKey = 'phase1' | 'phase2' | 'phase3' | 'phase4' | 'phase5' | 'phase6' | 'phase7'
+
 export interface Project {
   id: string
   userId: string
@@ -11,6 +13,7 @@ export interface Project {
   templateUsed?: string
   totalTasks: number
   completedTasks: number
+  currentPhase?: PhaseKey
   phase1: Phase1Data
   // Future phases will extend this interface
 }
@@ -52,6 +55,7 @@ export const createProjectDefaults = (overrides?: Partial<Project>): Project => 
   templateUsed: overrides?.templateUsed,
   totalTasks: overrides?.totalTasks ?? 27,
   completedTasks: overrides?.completedTasks ?? 0,
+  currentPhase: overrides?.currentPhase ?? 'phase1',
   phase1: overrides?.phase1 ?? createPhase1Defaults(),
 })
 
