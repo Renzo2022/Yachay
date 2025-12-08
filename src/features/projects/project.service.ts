@@ -1,20 +1,26 @@
 import {
   collection,
   doc,
-  setDoc,
-  query,
-  where,
-  orderBy,
   getDocs,
   onSnapshot,
+  orderBy,
+  query,
+  setDoc,
   updateDoc,
+  where,
   type DocumentData,
   type QueryDocumentSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore'
 import { firestore } from '../../services/firebase/firebase.ts'
 import type { Project } from './types.ts'
-import { createProjectDefaults } from './types.ts'
+import {
+  createCandidateFromExternal,
+  createPrismaData,
+  createProjectDefaults,
+  type Candidate,
+  type PrismaData,
+} from './types.ts'
 import type { Phase1Data } from '../phase1_planning/types.ts'
 import type { ExternalPaper } from '../phase2_search/types.ts'
 
@@ -52,6 +58,9 @@ export const listenToProjects = (userId: string, callback: (projects: Project[])
 }
 
 const getProjectDocRef = (projectId: string) => doc(projectsCollection, projectId)
+const getCandidatesCollection = (projectId: string) => collection(getProjectDocRef(projectId), 'candidates')
+const getIncludedCollection = (projectId: string) => collection(getProjectDocRef(projectId), 'included_studies')
+const getPrismaDocRef = (projectId: string) => doc(collection(getProjectDocRef(projectId), 'prisma'), 'stats')
 
 export const listenToProject = (projectId: string, callback: (project: Project | null) => void): Unsubscribe => {
   const projectRef = getProjectDocRef(projectId)
@@ -73,21 +82,60 @@ export const updateProjectPhase1 = async (projectId: string, phase1: Phase1Data)
 }
 
 export const saveProjectCandidates = async (projectId: string, papers: ExternalPaper[]) => {
-  const candidatesCollection = collection(getProjectDocRef(projectId), 'candidates')
-  const timestamp = Date.now()
+  const candidatesCollection = getCandidatesCollection(projectId)
   await Promise.all(
-    papers.map((paper) =>
-      setDoc(
-        doc(candidatesCollection, paper.id),
-        {
-          ...paper,
-          savedAt: timestamp,
-        },
-        { merge: true },
-      ),
-    ),
+    papers.map((paper) => {
+      const candidate = createCandidateFromExternal(projectId, paper)
+      return setDoc(doc(candidatesCollection, candidate.id), candidate, { merge: true })
+    }),
   )
-  await updateDoc(getProjectDocRef(projectId), {
-    updatedAt: Date.now(),
+  await updateDoc(getProjectDocRef(projectId), { updatedAt: Date.now() })
+}
+
+export const listenToCandidates = (projectId: string, callback: (candidates: Candidate[]) => void): Unsubscribe => {
+  return onSnapshot(getCandidatesCollection(projectId), (snapshot) => {
+    const items = snapshot.docs.map((candidateDoc) => {
+      const data = candidateDoc.data() as Candidate
+      return { ...data, id: data.id ?? candidateDoc.id }
+    })
+    callback(items)
   })
+}
+
+export const updateCandidateRecord = async (
+  projectId: string,
+  candidateId: string,
+  updates: Partial<Candidate>,
+) => {
+  await setDoc(doc(getCandidatesCollection(projectId), candidateId), updates, { merge: true })
+}
+
+export const confirmCandidateDecision = async (projectId: string, candidate: Candidate, decision: Candidate['decision']) => {
+  await updateCandidateRecord(projectId, candidate.id, {
+    decision,
+    userConfirmed: true,
+    screeningStatus: 'screened',
+  })
+
+  if (decision === 'include') {
+    await setDoc(doc(getIncludedCollection(projectId), candidate.id), {
+      ...candidate,
+      decision: 'include',
+      confirmedAt: Date.now(),
+    })
+  }
+}
+
+export const listenToPrismaData = (projectId: string, callback: (data: PrismaData) => void): Unsubscribe => {
+  return onSnapshot(getPrismaDocRef(projectId), (snapshot) => {
+    if (!snapshot.exists()) {
+      callback(createPrismaData())
+      return
+    }
+    callback({ ...createPrismaData(), ...(snapshot.data() as PrismaData) })
+  })
+}
+
+export const updatePrismaData = async (projectId: string, data: Partial<PrismaData>) => {
+  await setDoc(getPrismaDocRef(projectId), data, { merge: true })
 }

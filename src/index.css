@@ -7,8 +7,8 @@
 @layer base {
   :root {
     font-family: 'Archivo', system-ui, sans-serif;
-    color: theme('colors.text-main');
-    background-color: theme('colors.main');
+    color: #111111;
+    background-color: #ffffff;
     font-synthesis: none;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
@@ -24,15 +24,16 @@
   body {
     margin: 0;
     min-height: 100vh;
-    background-color: theme('colors.main');
+    background-color: #ffffff;
   }
 
   #root {
     min-height: 100vh;
+    background-color: #ffffff;
   }
 
   a {
-    color: theme('colors.text-main');
+    color: #111111;
     text-decoration: none;
     font-weight: 600;
   }

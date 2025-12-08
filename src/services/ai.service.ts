@@ -1,4 +1,5 @@
 import type { Phase1Data } from '../features/phase1_planning/types.ts'
+import type { Candidate } from '../features/projects/types.ts'
 
 export type GeneratedProtocolPayload = {
   topic: string
@@ -14,6 +15,40 @@ export type GeneratedProtocolPayload = {
     exclusionCriteria: string[]
   }
   generatedAt: number
+}
+
+const evaluateDecision = (title: string, abstract: string): Candidate['decision'] => {
+  const normalized = `${title} ${abstract}`.toLowerCase()
+  if (normalized.includes('gamification')) return 'include'
+  if (normalized.includes('k-12') || normalized.includes('school')) return 'exclude'
+  return 'uncertain'
+}
+
+export const screenPaper = async (paper: Candidate, criteria: Phase1Data): Promise<Candidate> => {
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  const decision = evaluateDecision(paper.title, paper.abstract)
+
+  const reasonMap: Record<NonNullable<Candidate['decision']>, string> = {
+    include: `Cumple criterios PICO (${criteria.pico.population}) y menciona Gamification.`,
+    exclude: 'Población escolar (K-12) fuera del alcance universitario definido.',
+    uncertain: 'No hay suficiente contexto para asegurar cumplimiento de criterios. Requiere revisión humana.',
+  }
+
+  const confidenceMap: Record<NonNullable<Candidate['decision']>, Candidate['confidence']> = {
+    include: 'high',
+    exclude: 'high',
+    uncertain: 'medium',
+  }
+
+  return {
+    ...paper,
+    screeningStatus: 'screened',
+    decision,
+    confidence: decision ? confidenceMap[decision] : 'medium',
+    reason: decision ? reasonMap[decision] : undefined,
+    processedAt: Date.now(),
+    userConfirmed: false,
+  }
 }
 
 const PICO_TEMPLATE: GeneratedProtocolPayload['protocol']['pico'] = {
