@@ -1,6 +1,8 @@
 import type { Phase1Data } from '../features/phase1_planning/types.ts'
 import type { Candidate } from '../features/projects/types.ts'
 import type { ExtractionPayload } from '../features/phase5_extraction/types.ts'
+import type { SynthesisTheme } from '../features/phase6_synthesis/types.ts'
+import type { SynthesisStats } from '../features/phase6_synthesis/analytics.ts'
 
 export type GeneratedProtocolPayload = {
   topic: string
@@ -138,4 +140,39 @@ export const extractDataRAG = async (_pdfText: string): Promise<ExtractionPayloa
   // TODO: Integrar Groq real cuando haya API key.
   await simulatedDelay()
   return SAMPLE_EXTRACTION
+}
+
+const SAMPLE_NARRATIVE = `Los estudios analizados muestran una tendencia creciente desde 2019, con una concentración importante en Norteamérica y Europa. En general, la implementación de herramientas basadas en IA reportó mejoras consistentes en la rapidez de retroalimentación y en la precisión de las evaluaciones.
+
+Los temas predominantes indican que las intervenciones más efectivas combinan dashboards analíticos con entrenamiento docente. Los resultados cuantitativos respaldan incrementos estadísticamente significativos en métricas de coherencia, aunque persisten variaciones por contexto institucional.
+
+Finalmente, se observan vacíos de evidencia en poblaciones de educación técnica y en seguimientos longitudinales. Estos hallazgos sugieren priorizar estudios multicéntricos y métricas de impacto a largo plazo.`
+
+export const generateNarrative = async (
+  themes: SynthesisTheme[],
+  stats: SynthesisStats,
+): Promise<string> => {
+  const hasApiKey = Boolean(import.meta.env.VITE_GROQ_API_KEY)
+  const simulatedDelay = async () => new Promise((resolve) => setTimeout(resolve, 1500))
+
+  const themeSummary =
+    themes.length > 0 ? themes.map((theme) => `${theme.title}: ${theme.description}`).join(' | ') : 'Sin temas definidos'
+
+  const numericSummary = {
+    years: stats.byYear.map((item) => `${item.name}: ${item.count ?? 0}`).join(', '),
+    countries: stats.byCountry.slice(0, 5).map((item) => `${item.name}: ${item.value ?? 0}`).join(', '),
+    effects: stats.forest
+      .slice(0, 5)
+      .map((item) => `${item.title}: ${item.effect.toFixed(2)} [${item.lower.toFixed(2)}, ${item.upper.toFixed(2)}]`)
+      .join(' | '),
+  }
+
+  if (!hasApiKey) {
+    await simulatedDelay()
+    return `${SAMPLE_NARRATIVE}\n\nTemas clave: ${themeSummary}\nDatos cuantitativos: ${numericSummary.years}`
+  }
+
+  // TODO: Replace with real Groq SDK call.
+  await simulatedDelay()
+  return SAMPLE_NARRATIVE
 }

@@ -19,6 +19,15 @@ export interface ExtractionData {
   }
   limitations: string[]
   status: 'empty' | 'extracted' | 'verified'
+  context?: {
+    year?: number
+    country?: string
+  }
+  effect?: {
+    value: number
+    lower: number
+    upper: number
+  }
 }
 
 export type ExtractionPayload = Omit<ExtractionData, 'id' | 'studyId' | 'status'>
@@ -44,4 +53,10 @@ export const createEmptyExtraction = (studyId: string): ExtractionData => ({
   },
   limitations: [],
   status: 'empty',
+  context: {},
+  effect: {
+    value: 0,
+    lower: -0.5,
+    upper: 0.5,
+  },
 })
