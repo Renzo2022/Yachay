@@ -11,12 +11,14 @@ import {
 } from '../../../services/synthesis.service.ts'
 import { prepareChartsData, type SynthesisStats } from '../analytics.ts'
 import { generateNarrative } from '../../../services/ai.service.ts'
+import { useToast } from '../../../core/toast/ToastProvider.tsx'
 
 export const useSynthesis = (projectId: string) => {
   const [studies, setStudies] = useState<Candidate[]>([])
   const [matrix, setMatrix] = useState<ExtractionData[]>([])
   const [synthesis, setSynthesis] = useState<SynthesisData>(createDefaultSynthesis())
   const [generating, setGenerating] = useState(false)
+  const { showToast } = useToast()
 
   useEffect(() => {
     if (!projectId) return
@@ -38,8 +40,9 @@ export const useSynthesis = (projectId: string) => {
     async (nextThemes: SynthesisTheme[]) => {
       setSynthesis((prev) => ({ ...prev, themes: nextThemes }))
       await saveSynthesisData(projectId, { themes: nextThemes })
+      showToast({ type: 'success', message: 'Temas actualizados' })
     },
-    [projectId],
+    [projectId, showToast],
   )
 
   const addTheme = async (theme: Omit<SynthesisTheme, 'id'>) => {
@@ -60,11 +63,13 @@ export const useSynthesis = (projectId: string) => {
   const updateNarrative = async (value: string) => {
     setSynthesis((prev) => ({ ...prev, narrative: value }))
     await saveSynthesisData(projectId, { narrative: value })
+    showToast({ type: 'success', message: 'Narrativa guardada' })
   }
 
   const updateGaps = async (gaps: string[]) => {
     setSynthesis((prev) => ({ ...prev, gaps }))
     await saveSynthesisData(projectId, { gaps })
+    showToast({ type: 'info', message: 'Vacíos de evidencia actualizados' })
   }
 
   const generateNarrativeDraft = async () => {
@@ -72,6 +77,7 @@ export const useSynthesis = (projectId: string) => {
     try {
       const narrative = await generateNarrative(synthesis.themes, stats)
       await updateNarrative(narrative)
+      showToast({ type: 'success', message: 'Borrador IA listo' })
     } finally {
       setGenerating(false)
     }
