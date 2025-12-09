@@ -118,15 +118,28 @@ const mapProtocolToPhase1 = (topic: string, payload: GeneratedProtocolPayload): 
       return cleaned.slice(0, 5)
     }
 
-    const defaults = PROTOCOL_RESPONSE.subquestions
+    const fallbackTemplates = [
+      `¿Cómo impacta ${topic} en los resultados primarios definidos en la pregunta PICO?`,
+      `¿Qué variaciones se observan en ${topic} cuando se compara con el control definido en la PICO?`,
+      `¿Cómo influye ${topic} en subgrupos específicos de la población objetivo?`,
+      `¿Qué factores metodológicos condicionan la efectividad o seguridad de ${topic}?`,
+      `¿Cómo contribuye ${topic} a la reproducibilidad y calidad de la evidencia disponible?`,
+    ]
+
     const combined = [...cleaned]
     let index = 0
-    while (combined.length < 5 && index < defaults.length) {
-      if (!combined.includes(defaults[index])) {
-        combined.push(defaults[index])
+    while (combined.length < 5 && index < fallbackTemplates.length) {
+      const candidate = fallbackTemplates[index]
+      if (!combined.includes(candidate)) {
+        combined.push(candidate)
       }
       index += 1
     }
+
+    while (combined.length < 5) {
+      combined.push(`Subpregunta complementaria sobre ${topic} #${combined.length + 1}`)
+    }
+
     return combined.slice(0, 5)
   }
 

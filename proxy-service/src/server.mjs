@@ -79,11 +79,11 @@ app.post("/groq/protocol", async (req, res) => {
         {
           role: "system",
           content:
-            "Eres un metodólogo experto en revisiones sistemáticas PRISMA. Responde únicamente en JSON válido.",
+            "Eres un metodólogo PRISMA 2020. Devuelve exclusivamente JSON válido y completo para cada sección solicitada.",
         },
         {
           role: "user",
-          content: `Genera un protocolo para "${topic}" siguiendo este esquema (3 a 5 subpreguntas):
+          content: `Genera un protocolo para "${topic}" siguiendo este esquema (exactamente 5 subpreguntas, cada texto detallado y específico):
 {
   "mainQuestion": "",
   "pico": {
@@ -92,10 +92,16 @@ app.post("/groq/protocol", async (req, res) => {
     "comparison": "",
     "outcome": ""
   },
-  "subquestions": [],
-  "objectives": "",
-  "coherenceAnalysis": "",
-  "methodologicalJustification": "",
+  "subquestions": [
+    "Subpregunta 1 enfocada al tema",
+    "Subpregunta 2 coherente con PICO",
+    "Subpregunta 3",
+    "Subpregunta 4",
+    "Subpregunta 5"
+  ],
+  "objectives": "Describe objetivos específicos, métricas y contexto (min. 2 oraciones).",
+  "coherenceAnalysis": "Explica cómo la pregunta principal, las subpreguntas y PICO se alinean metodológicamente (min. 3 oraciones).",
+  "methodologicalJustification": "Describe por qué se usa PICO y cómo asegura comparabilidad y reproducibilidad (min. 3 oraciones).",
   "inclusionCriteria": [],
   "exclusionCriteria": []
 }`,

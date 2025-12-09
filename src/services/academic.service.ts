@@ -163,6 +163,26 @@ export const searchFederated = async (query: string, databases: ExternalSource[]
   return results.flat()
 }
 
+export const searchDatabase = async (source: ExternalSource, query: string): Promise<ExternalPaper[]> => {
+  const sanitizedQuery = query.trim()
+  if (!sanitizedQuery) return []
+
+  if (!hasProxy) {
+    await delay(800)
+    return mockPapers.filter((paper) => paper.source === source)
+  }
+
+  const fetcher = sourceFetchers[source]
+  if (!fetcher) return []
+
+  try {
+    return await fetcher(sanitizedQuery)
+  } catch (error) {
+    console.error(`searchDatabase:${source}`, error)
+    return []
+  }
+}
+
 const proxyPost = async <T>(path: string, body: unknown): Promise<T> => {
   if (!hasProxy) {
     throw new Error('Proxy base URL is not configured')
@@ -291,7 +311,11 @@ const SAMPLE_STRATEGY: Phase2Strategy = {
   ],
 }
 
-export const generatePhase2Strategy = async (phase1: Phase1Data, topic: string): Promise<Phase2Strategy> => {
+export const generatePhase2Strategy = async (
+  phase1: Phase1Data,
+  topic: string,
+  sources?: ExternalSource[],
+): Promise<Phase2Strategy> => {
   const sanitizedTopic = topic.trim() || 'Revisión sistemática en IA educativa'
 
   if (!hasProxy) {
@@ -303,6 +327,7 @@ export const generatePhase2Strategy = async (phase1: Phase1Data, topic: string):
     return await proxyPost<Phase2Strategy>('/groq/search-strategy', {
       topic: sanitizedTopic,
       phase1,
+      sources,
     })
   } catch (error) {
     console.error('generatePhase2Strategy error', error)

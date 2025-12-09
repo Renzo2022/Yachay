@@ -1,8 +1,19 @@
 import { createPhase1Defaults, type Phase1Data } from '../phase1_planning/types.ts'
-import type { ExternalPaper } from '../phase2_search/types.ts'
+import type { ExternalPaper, ExternalSource, Phase2Strategy } from '../phase2_search/types.ts'
 import type { QualityLevel } from '../phase4_quality/types.ts'
 
 export type PhaseKey = 'phase1' | 'phase2' | 'phase3' | 'phase4' | 'phase5' | 'phase6' | 'phase7'
+
+export interface Phase2Data {
+  lastStrategy: Phase2Strategy | null
+  hiddenSubquestions: string[]
+  selectedSources?: ExternalSource[]
+  yearFilters?: { from: number; to: number }
+  lastSearchAt?: number | null
+  lastSearchSubquestion?: string | null
+  lastSearchResultCount?: number | null
+  documentationGeneratedAt?: number | null
+}
 
 export interface Project {
   id: string
@@ -15,6 +26,7 @@ export interface Project {
   completedTasks: number
   currentPhase?: PhaseKey
   phase1: Phase1Data
+  phase2?: Phase2Data
   // Future phases will extend this interface
 }
 
@@ -57,6 +69,7 @@ export const createProjectDefaults = (overrides?: Partial<Project>): Project => 
   completedTasks: overrides?.completedTasks ?? 0,
   currentPhase: overrides?.currentPhase ?? 'phase1',
   phase1: overrides?.phase1 ?? createPhase1Defaults(),
+  phase2: overrides?.phase2 ?? { lastStrategy: null, hiddenSubquestions: [] },
 })
 
 export const createCandidateFromExternal = (projectId: string, paper: ExternalPaper): Candidate => ({

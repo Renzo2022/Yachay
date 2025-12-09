@@ -4,6 +4,7 @@ import { PicoGrid } from '../components/PicoGrid.tsx'
 import { PhaseChecklist } from '../components/PhaseChecklist.tsx'
 import { BrutalCard } from '../../../core/ui-kit/BrutalCard.tsx'
 import { BrutalInput } from '../../../core/ui-kit/BrutalInput.tsx'
+import { SubquestionCard } from '../components/SubquestionCard.tsx'
 import { usePhase1 } from '../hooks/usePhase1.ts'
 import { generatePhase1Protocol } from '../../../services/ai.service.ts'
 import { useProject } from '../../projects/ProjectContext.tsx'
@@ -42,6 +43,18 @@ export const Phase1View = () => {
     setAiLoading(false)
   }
 
+  const handleSubquestionChange = (index: number, nextValue: string) => {
+    const next = [...data.subquestions]
+    next[index] = nextValue
+    updateField('subquestions', next)
+  }
+
+  const handleRemoveSubquestion = (index: number) => {
+    if (data.subquestions.length <= 1) return
+    const next = data.subquestions.filter((_, idx) => idx !== index)
+    updateField('subquestions', next)
+  }
+
   const checklistItems = [
     { id: 'mainQuestion', label: 'Definir pregunta principal (PICO completo)', completed: completionChecklist.mainQuestion },
     { id: 'subquestions', label: 'Generar subpreguntas derivadas (3 a 5)', completed: completionChecklist.subquestions },
@@ -52,9 +65,16 @@ export const Phase1View = () => {
 
   return (
     <div className="space-y-8">
-      <AIGeneratorPanel initialTopic={data.mainQuestion || project.name} onGenerate={handleAiGenerate} />
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex-1">
+          <AIGeneratorPanel initialTopic={data.mainQuestion || project.name} onGenerate={handleAiGenerate} />
+        </div>
+        <div className="w-full lg:w-80">
+          <PhaseChecklist items={checklistItems} />
+        </div>
+      </div>
 
-      <section className="grid lg:grid-cols-[minmax(0,3fr)_minmax(280px,1fr)] gap-6">
+      <section className="space-y-6">
         <div className="space-y-6">
           <BrutalCard className="bg-neutral-100" title="Pregunta principal" titleClassName="text-black">
             <BrutalInput
@@ -65,14 +85,20 @@ export const Phase1View = () => {
             />
           </BrutalCard>
 
-          <BrutalCard className="bg-neutral-100" title="Subpreguntas clave" titleClassName="text-black">
-            <BrutalInput
-              multiline
-              value={getListTextValue('subquestions')}
-              onChange={(event) => updateListField('subquestions', event.target.value)}
-              badge={aiBadgeFor('subquestions') ? '🤖 IA' : undefined}
-            />
-            <p className="mt-2 font-mono text-xs text-main">Recuerda mantener entre 3 y 5 subpreguntas.</p>
+          <BrutalCard className="bg-neutral-100 space-y-4" title="Subpreguntas clave" titleClassName="text-black">
+            <div className="grid gap-4">
+              {data.subquestions.map((subquestion, index) => (
+                <SubquestionCard
+                  key={`${index}-${subquestion.slice(0, 16)}`}
+                  index={index}
+                  value={subquestion}
+                  onChange={(value) => handleSubquestionChange(index, value)}
+                  onRemove={() => handleRemoveSubquestion(index)}
+                  disableRemove={data.subquestions.length <= 1}
+                  badge={aiBadgeFor('subquestions') ? '🤖 IA' : undefined}
+                />
+              ))}
+            </div>
           </BrutalCard>
 
           <PicoGrid pico={data.pico} onChange={updatePicoField} aiBadgeFor={aiBadgeFor} />
@@ -121,18 +147,6 @@ export const Phase1View = () => {
                 badge={aiBadgeFor('exclusionCriteria') ? '🤖 IA' : undefined}
               />
             </BrutalCard>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <PhaseChecklist items={checklistItems} />
-          <div className="border-4 border-black bg-neutral-100 shadow-brutal p-5">
-            <h4 className="text-xl font-black uppercase text-main mb-3">Tips de fase</h4>
-            <ul className="list-disc list-inside font-mono text-sm text-main space-y-2">
-              <li>Sincroniza tu pregunta con los criterios PICO para evitar sesgos.</li>
-              <li>Documenta las fuentes de cada decisión (IA, expertos, literatura).</li>
-              <li>Revisa que los criterios sean replicables y medibles.</li>
-            </ul>
           </div>
         </div>
       </section>

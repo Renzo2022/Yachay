@@ -1,14 +1,31 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import confetti from 'canvas-confetti'
 import { SearchHeader } from '../components/SearchHeader.tsx'
 import { PaperCard } from '../components/PaperCard.tsx'
 import { StrategySummary } from '../components/StrategyGeneratorModal.tsx'
-import { Phase2Checklist } from '../components/Phase2Checklist.tsx'
+import { Phase2Checklist } from '../components/Phase2Checklist'
 import type { ExternalPaper, ExternalSource, Phase2Strategy } from '../types.ts'
-import { searchFederated, generatePhase2Strategy } from '../../../services/academic.service.ts'
+import type { Phase2Data } from '../../projects/types.ts'
+import { generatePhase2Strategy, searchDatabase } from '../../../services/academic.service.ts'
 import { useProject } from '../../projects/ProjectContext.tsx'
-import { saveProjectCandidates } from '../../projects/project.service.ts'
+import { savePhase2State, saveProjectCandidates } from '../../projects/project.service.ts'
 import { createPhase1Defaults } from '../../phase1_planning/types.ts'
+
+const ALL_SOURCES: ExternalSource[] = ['semantic_scholar', 'pubmed', 'crossref', 'europe_pmc']
+const SOURCE_LABELS: Record<ExternalSource, string> = {
+  semantic_scholar: 'Semantic Scholar',
+  pubmed: 'PubMed',
+  crossref: 'CrossRef',
+  europe_pmc: 'Europe PMC',
+}
+const INITIAL_YEAR_FILTERS = { from: 2010, to: new Date().getFullYear() }
+
+type Phase2MetaState = {
+  lastSearchAt: number | null
+  lastSearchSubquestion: string | null
+  lastSearchResultCount: number | null
+  documentationGeneratedAt: number | null
+}
 
 export const Phase2View = () => {
   const project = useProject()
@@ -16,33 +33,108 @@ export const Phase2View = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [searchPerformed, setSearchPerformed] = useState(false)
-  const [strategy, setStrategy] = useState<Phase2Strategy | null>(null)
+  const [strategy, setStrategy] = useState<Phase2Strategy | null>(project.phase2?.lastStrategy ?? null)
   const [strategyLoading, setStrategyLoading] = useState(false)
   const [strategyError, setStrategyError] = useState<string | null>(null)
-  const [hiddenSubquestions, setHiddenSubquestions] = useState<Set<string>>(new Set())
+  const [hiddenSubquestions, setHiddenSubquestions] = useState<Set<string>>(
+    new Set(project.phase2?.hiddenSubquestions ?? []),
+  )
+  const [selectedSources, setSelectedSources] = useState<ExternalSource[]>(project.phase2?.selectedSources ?? ALL_SOURCES)
+  const [yearFilters, setYearFilters] = useState(project.phase2?.yearFilters ?? INITIAL_YEAR_FILTERS)
+  const [searchingSubquestion, setSearchingSubquestion] = useState<string | null>(null)
+  const [activeSubquestion, setActiveSubquestion] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [phase2Meta, setPhase2Meta] = useState<Phase2MetaState>({
+    lastSearchAt: project.phase2?.lastSearchAt ?? null,
+    lastSearchSubquestion: project.phase2?.lastSearchSubquestion ?? null,
+    lastSearchResultCount: project.phase2?.lastSearchResultCount ?? null,
+    documentationGeneratedAt: project.phase2?.documentationGeneratedAt ?? null,
+  })
 
-  const handleSearch = async (query: string, sources: ExternalSource[]) => {
-    setLoading(true)
-    setSearchPerformed(true)
-    setSelectedIds(new Set())
-    const results = await searchFederated(query, sources)
-    setPapers(results)
-    setLoading(false)
+  useEffect(() => {
+    setStrategy(project.phase2?.lastStrategy ?? null)
+    setHiddenSubquestions(new Set(project.phase2?.hiddenSubquestions ?? []))
+    setSelectedSources(project.phase2?.selectedSources ?? ALL_SOURCES)
+    setYearFilters(project.phase2?.yearFilters ?? INITIAL_YEAR_FILTERS)
+    setPhase2Meta({
+      lastSearchAt: project.phase2?.lastSearchAt ?? null,
+      lastSearchSubquestion: project.phase2?.lastSearchSubquestion ?? null,
+      lastSearchResultCount: project.phase2?.lastSearchResultCount ?? null,
+      documentationGeneratedAt: project.phase2?.documentationGeneratedAt ?? null,
+    })
+  }, [project.phase2])
+
+  const persistPhase2State = useCallback(
+    async (override: Partial<Phase2Data> = {}) => {
+      try {
+        const payload: Phase2Data = {
+          lastStrategy: override.lastStrategy !== undefined ? override.lastStrategy : strategy,
+          hiddenSubquestions:
+            override.hiddenSubquestions !== undefined
+              ? [...override.hiddenSubquestions]
+              : Array.from(hiddenSubquestions),
+          selectedSources: override.selectedSources !== undefined ? override.selectedSources : selectedSources,
+          yearFilters: override.yearFilters ?? yearFilters,
+          lastSearchAt:
+            override.lastSearchAt !== undefined ? override.lastSearchAt : phase2Meta.lastSearchAt ?? null,
+          lastSearchSubquestion:
+            override.lastSearchSubquestion !== undefined
+              ? override.lastSearchSubquestion
+              : phase2Meta.lastSearchSubquestion ?? null,
+          lastSearchResultCount:
+            override.lastSearchResultCount !== undefined
+              ? override.lastSearchResultCount
+              : phase2Meta.lastSearchResultCount ?? null,
+          documentationGeneratedAt:
+            override.documentationGeneratedAt !== undefined
+              ? override.documentationGeneratedAt
+              : phase2Meta.documentationGeneratedAt ?? null,
+        }
+        await savePhase2State(project.id, payload)
+      } catch (error) {
+        console.error('persistPhase2State', error)
+      }
+    },
+    [project.id, strategy, hiddenSubquestions, selectedSources, yearFilters, phase2Meta],
+  )
+
+  const handleToggleSource = (source: ExternalSource) => {
+    setSelectedSources((prev) => {
+      const next = prev.includes(source) ? prev.filter((entry) => entry !== source) : [...prev, source]
+      persistPhase2State({ selectedSources: next })
+      return next
+    })
   }
 
   const handleGenerateStrategies = async () => {
+    if (selectedSources.length === 0) {
+      showStatus('Selecciona al menos una base de datos para generar estrategias.')
+      return
+    }
+    setPapers([])
+    setSearchPerformed(false)
+    setActiveSubquestion(null)
+    setSelectedIds(new Set())
+    setYearFilters(INITIAL_YEAR_FILTERS)
     setStrategyLoading(true)
     setStrategyError(null)
     try {
-      const payload = await generatePhase2Strategy(project.phase1 ?? createPhase1Defaults(), project.name)
+      const payload = await generatePhase2Strategy(
+        project.phase1 ?? createPhase1Defaults(),
+        project.name,
+        selectedSources,
+      )
+      const nextHidden = new Set<string>()
       setStrategy(payload)
-      setHiddenSubquestions(new Set())
+      setHiddenSubquestions(nextHidden)
+      persistPhase2State({ lastStrategy: payload, hiddenSubquestions: Array.from(nextHidden) })
     } catch (error) {
       console.error('handleGenerateStrategies', error)
       setStrategy(null)
+      setHiddenSubquestions(new Set())
       setStrategyError('No pudimos generar la estrategia. Intenta nuevamente.')
+      persistPhase2State({ lastStrategy: null, hiddenSubquestions: [] })
     } finally {
       setStrategyLoading(false)
     }
@@ -78,19 +170,93 @@ export const Phase2View = () => {
       showStatus('Debes conservar al menos una subpregunta.')
       return
     }
-    setHiddenSubquestions((prev) => {
-      const next = new Set(prev)
-      next.add(subquestion)
-      return next
-    })
+    const nextHidden = new Set(hiddenSubquestions)
+    nextHidden.add(subquestion)
+    setHiddenSubquestions(nextHidden)
+    persistPhase2State({ hiddenSubquestions: Array.from(nextHidden) })
+    if (activeSubquestion === subquestion) {
+      setActiveSubquestion(null)
+    }
+  }
+
+  const handleYearFiltersChange = (next: { from: number; to: number }) => {
+    setYearFilters(next)
+    persistPhase2State({ yearFilters: next })
+  }
+
+  const handleSearchSubquestion = async (
+    block: Phase2Strategy['subquestionStrategies'][number] | undefined,
+  ) => {
+    if (!block) return
+    if (selectedSources.length === 0) {
+      showStatus('Selecciona al menos una base antes de buscar.')
+      return
+    }
+
+    const targetSubquestion = block.subquestion || 'Subpregunta sin título'
+    setSearchingSubquestion(targetSubquestion)
+    setActiveSubquestion(targetSubquestion)
+    setLoading(true)
+    setSelectedIds(new Set())
+
+    try {
+      const tasks = selectedSources.map(async (source) => {
+        const label = SOURCE_LABELS[source].toLowerCase()
+        const strategyMatch = (block.databaseStrategies ?? []).find((entry) =>
+          (entry?.database ?? '').toLowerCase().includes(label),
+        )
+        const fallbackQuery =
+          strategyMatch?.query || block.keywords?.join(' OR ') || block.subquestion || targetSubquestion
+        return await searchDatabase(source, fallbackQuery)
+      })
+
+      const results = (await Promise.all(tasks)).flat()
+      const filteredByYear = results.filter((paper) => {
+        if (!paper.year) return true
+        return paper.year >= yearFilters.from && paper.year <= yearFilters.to
+      })
+
+      setPapers(filteredByYear)
+      setSearchPerformed(true)
+      const timestamp = Date.now()
+      const nextMeta = {
+        lastSearchAt: timestamp,
+        lastSearchSubquestion: targetSubquestion,
+        lastSearchResultCount: filteredByYear.length,
+        documentationGeneratedAt: phase2Meta.documentationGeneratedAt,
+      }
+      setPhase2Meta(nextMeta)
+      persistPhase2State({
+        lastSearchAt: timestamp,
+        lastSearchSubquestion: targetSubquestion,
+        lastSearchResultCount: filteredByYear.length,
+      })
+      showStatus(
+        filteredByYear.length > 0
+          ? `${filteredByYear.length} resultados para "${targetSubquestion}".`
+          : `Sin resultados para "${targetSubquestion}".`,
+      )
+    } catch (error) {
+      console.error('handleSearchSubquestion', error)
+      showStatus('No pudimos ejecutar esa búsqueda. Intenta nuevamente.')
+    } finally {
+      setSearchingSubquestion(null)
+      setLoading(false)
+    }
+  }
+
+  const handleGenerateDocumentation = () => {
+    if (!strategy) {
+      showStatus('Necesitas una estrategia generada para documentarla.')
+      return
+    }
+    const timestamp = Date.now()
+    setPhase2Meta((prev) => ({ ...prev, documentationGeneratedAt: timestamp }))
+    persistPhase2State({ documentationGeneratedAt: timestamp })
+    showStatus('📄 Documentación de estrategia generada (prototipo).')
   }
 
   const checklistItems = [
-    {
-      id: 'search',
-      label: 'Buscar artículos (bases tradicionales)',
-      completed: searchPerformed && papers.length > 0,
-    },
     {
       id: 'keywords',
       label: 'Extraer términos y sinónimos',
@@ -99,12 +265,17 @@ export const Phase2View = () => {
     {
       id: 'queries',
       label: 'Diseñar cadenas de búsqueda (subpreguntas validadas)',
-      completed: visibleSubquestions.length > 0,
+      completed: Boolean(strategy?.subquestionStrategies?.length),
+    },
+    {
+      id: 'search',
+      label: 'Buscar artículos (bases tradicionales)',
+      completed: searchPerformed && papers.length > 0,
     },
     {
       id: 'documentation',
       label: 'Documentar estrategia de búsqueda',
-      completed: Boolean(strategy?.recommendations?.length),
+      completed: Boolean(phase2Meta.documentationGeneratedAt),
     },
   ]
 
@@ -125,14 +296,22 @@ export const Phase2View = () => {
 
   return (
     <div className="space-y-8">
-      <SearchHeader
-        defaultQuestion={project.phase1?.mainQuestion ?? project.name}
-        onSearch={handleSearch}
-        onGenerateStrategies={handleGenerateStrategies}
-        disabled={loading || strategyLoading}
-      />
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex-1">
+          <SearchHeader
+            defaultQuestion={project.phase1?.mainQuestion ?? project.name}
+            selectedSources={selectedSources}
+            onToggleSource={handleToggleSource}
+            onGenerateStrategies={handleGenerateStrategies}
+            disabled={loading || strategyLoading}
+          />
+        </div>
+        <div className="w-full lg:w-80">
+          <Phase2Checklist items={checklistItems} />
+        </div>
+      </div>
 
-      <section className="grid lg:grid-cols-[minmax(0,3fr)_minmax(280px,1fr)] gap-6">
+      <section className="space-y-6">
         <div className="space-y-6">
           {strategyLoading ? (
             <div className="border-4 border-black bg-neutral-100 shadow-brutal p-6 font-mono text-main">
@@ -152,6 +331,13 @@ export const Phase2View = () => {
               subquestions={visibleSubquestions}
               onRemoveSubquestion={handleRemoveSubquestion}
               disableRemoval={visibleSubquestions.length <= 1}
+              yearFilters={yearFilters}
+              onYearFiltersChange={handleYearFiltersChange}
+              onSearchSubquestion={handleSearchSubquestion}
+              searchingSubquestion={searchingSubquestion}
+              activeSubquestion={activeSubquestion}
+              selectedSources={selectedSources}
+              onGenerateDocumentation={handleGenerateDocumentation}
             />
           ) : null}
 
@@ -164,34 +350,40 @@ export const Phase2View = () => {
 
           {!searchPerformed ? (
             <div className="border-4 border-black bg-neutral-100 shadow-brutal p-10 text-center space-y-4">
-              <p className="text-3xl font-black uppercase text-main">Listo para buscar</p>
+              <p className="text-3xl font-black uppercase text-main">Genera la estrategia y ejecuta cada subpregunta</p>
               <p className="font-mono text-main max-w-2xl mx-auto">
-                Usa la pregunta PICO de la Fase 1 para disparar consultas en Semantic Scholar y PubMed. La barra inferior te
-                permitirá guardar candidatos seleccionados.
+                Selecciona tus bases, genera la estrategia y luego usa el botón “Buscar papers” dentro de cada subpregunta para ver
+                resultados específicos.
               </p>
             </div>
           ) : null}
 
           {papers.length > 0 ? (
-            <div className="grid lg:grid-cols-2 gap-6">
-              {papers.map((paper) => (
-                <PaperCard
-                  key={paper.id}
-                  paper={paper}
-                  selected={selectedIds.has(paper.id)}
-                  onToggle={toggleSelection}
-                />
-              ))}
+            <div className="space-y-4">
+              {activeSubquestion ? (
+                <p className="text-sm font-mono text-main">
+                  Resultados actuales para: <span className="font-bold">{activeSubquestion}</span>
+                </p>
+              ) : null}
+              <div className="grid lg:grid-cols-2 gap-6">
+                {papers.map((paper) => (
+                  <PaperCard
+                    key={paper.id}
+                    paper={paper}
+                    selected={selectedIds.has(paper.id)}
+                    onToggle={toggleSelection}
+                  />
+                ))}
+              </div>
             </div>
           ) : null}
         </div>
 
-        <Phase2Checklist items={checklistItems} />
       </section>
 
       {loading ? (
         <div className="fixed inset-0 bg-black/75 text-text-main flex items-center justify-center font-mono text-xl z-40">
-          🔍 Buscando en el multiverso académico...
+          {searchingSubquestion ? `🔍 Buscando papers para "${searchingSubquestion}"...` : 'Procesando búsqueda...'}
         </div>
       ) : null}
 

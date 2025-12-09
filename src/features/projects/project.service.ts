@@ -14,7 +14,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore'
 import { firestore } from '../../services/firebase/firebase.ts'
-import type { Project } from './types.ts'
+import type { Phase2Data, Project } from './types.ts'
 import {
   createCandidateFromExternal,
   createPrismaData,
@@ -87,6 +87,14 @@ export const updateProjectPhase1 = async (projectId: string, phase1: Phase1Data)
   const projectRef = getProjectDocRef(projectId)
   await updateDoc(projectRef, {
     phase1,
+    updatedAt: Date.now(),
+  })
+}
+
+export const savePhase2State = async (projectId: string, phase2: Phase2Data) => {
+  const projectRef = getProjectDocRef(projectId)
+  await updateDoc(projectRef, {
+    phase2,
     updatedAt: Date.now(),
   })
 }
