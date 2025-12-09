@@ -8,7 +8,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 8080;
-const GROQ_MODEL = process.env.GROQ_MODEL ?? "llama-3.1-70b-versatile";
+const GROQ_MODEL = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
 
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
