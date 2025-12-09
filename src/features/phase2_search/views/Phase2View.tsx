@@ -2,11 +2,13 @@ import { useMemo, useState } from 'react'
 import confetti from 'canvas-confetti'
 import { SearchHeader } from '../components/SearchHeader.tsx'
 import { PaperCard } from '../components/PaperCard.tsx'
-import { StrategyGeneratorModal } from '../components/StrategyGeneratorModal.tsx'
-import type { ExternalPaper, ExternalSource, SearchStrategy } from '../types.ts'
-import { searchFederated, generateSearchStrategies } from '../../../services/academic.service.ts'
+import { StrategySummary } from '../components/StrategyGeneratorModal.tsx'
+import { Phase2Checklist } from '../components/Phase2Checklist.tsx'
+import type { ExternalPaper, ExternalSource, Phase2Strategy } from '../types.ts'
+import { searchFederated, generatePhase2Strategy } from '../../../services/academic.service.ts'
 import { useProject } from '../../projects/ProjectContext.tsx'
 import { saveProjectCandidates } from '../../projects/project.service.ts'
+import { createPhase1Defaults } from '../../phase1_planning/types.ts'
 
 export const Phase2View = () => {
   const project = useProject()
@@ -14,8 +16,9 @@ export const Phase2View = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [searchPerformed, setSearchPerformed] = useState(false)
-  const [strategies, setStrategies] = useState<SearchStrategy[]>([])
-  const [showModal, setShowModal] = useState(false)
+  const [strategy, setStrategy] = useState<Phase2Strategy | null>(null)
+  const [strategyLoading, setStrategyLoading] = useState(false)
+  const [strategyError, setStrategyError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
 
@@ -29,9 +32,18 @@ export const Phase2View = () => {
   }
 
   const handleGenerateStrategies = async () => {
-    const generated = await generateSearchStrategies(project.name)
-    setStrategies(generated)
-    setShowModal(true)
+    setStrategyLoading(true)
+    setStrategyError(null)
+    try {
+      const payload = await generatePhase2Strategy(project.phase1 ?? createPhase1Defaults(), project.name)
+      setStrategy(payload)
+    } catch (error) {
+      console.error('handleGenerateStrategies', error)
+      setStrategy(null)
+      setStrategyError('No pudimos generar la estrategia. Intenta nuevamente.')
+    } finally {
+      setStrategyLoading(false)
+    }
   }
 
   const toggleSelection = (paperId: string) => {
@@ -47,6 +59,29 @@ export const Phase2View = () => {
   }
 
   const selectedPapers = useMemo(() => papers.filter((paper) => selectedIds.has(paper.id)), [papers, selectedIds])
+
+  const checklistItems = [
+    {
+      id: 'search',
+      label: 'Buscar artículos (bases tradicionales)',
+      completed: searchPerformed && papers.length > 0,
+    },
+    {
+      id: 'keywords',
+      label: 'Extraer términos y sinónimos',
+      completed: Boolean(strategy?.keywordMatrix?.length),
+    },
+    {
+      id: 'queries',
+      label: 'Diseñar cadenas de búsqueda',
+      completed: Boolean(strategy?.databaseStrategies?.length),
+    },
+    {
+      id: 'documentation',
+      label: 'Documentar estrategia de búsqueda',
+      completed: Boolean(strategy?.recommendations?.length),
+    },
+  ]
 
   const handleSaveCandidates = async () => {
     if (selectedPapers.length === 0) return
@@ -70,38 +105,58 @@ export const Phase2View = () => {
         defaultQuestion={project.phase1?.mainQuestion ?? project.name}
         onSearch={handleSearch}
         onGenerateStrategies={handleGenerateStrategies}
-        disabled={loading}
+        disabled={loading || strategyLoading}
       />
 
-      {searchPerformed && papers.length === 0 ? (
-        <div className="border-4 border-dashed border-accent-success bg-neutral-900 text-text-main text-center py-20 px-8 shadow-brutal">
-          <p className="text-3xl font-black uppercase">Sin resultados</p>
-          <p className="font-mono mt-2">Ajusta tus fuentes o refina la pregunta para obtener nuevos hallazgos.</p>
-        </div>
-      ) : null}
+      <section className="grid lg:grid-cols-[minmax(0,3fr)_minmax(280px,1fr)] gap-6">
+        <div className="space-y-6">
+          {strategyLoading ? (
+            <div className="border-4 border-black bg-neutral-100 shadow-brutal p-6 font-mono text-main">
+              ✨ Generando estrategia federada con tus datos de la Fase 1...
+            </div>
+          ) : null}
 
-      {!searchPerformed ? (
-        <div className="border-4 border-black bg-neutral-100 shadow-brutal p-10 text-center space-y-4">
-          <p className="text-3xl font-black uppercase text-main">Listo para buscar</p>
-          <p className="font-mono text-main max-w-2xl mx-auto">
-            Usa la pregunta PICO de la Fase 1 para disparar consultas en Semantic Scholar y PubMed. La barra inferior te
-            permitirá guardar candidatos seleccionados.
-          </p>
-        </div>
-      ) : null}
+          {strategyError ? (
+            <div className="border-4 border-accent-danger bg-white shadow-brutal p-6 font-mono text-main">
+              {strategyError}
+            </div>
+          ) : null}
 
-      {papers.length > 0 ? (
-        <div className="grid lg:grid-cols-2 gap-6">
-          {papers.map((paper) => (
-            <PaperCard
-              key={paper.id}
-              paper={paper}
-              selected={selectedIds.has(paper.id)}
-              onToggle={toggleSelection}
-            />
-          ))}
+          {strategy && !strategyLoading ? <StrategySummary strategy={strategy} /> : null}
+
+          {searchPerformed && papers.length === 0 ? (
+            <div className="border-4 border-dashed border-accent-success bg-neutral-900 text-text-main text-center py-20 px-8 shadow-brutal">
+              <p className="text-3xl font-black uppercase">Sin resultados</p>
+              <p className="font-mono mt-2">Ajusta tus fuentes o refina la pregunta para obtener nuevos hallazgos.</p>
+            </div>
+          ) : null}
+
+          {!searchPerformed ? (
+            <div className="border-4 border-black bg-neutral-100 shadow-brutal p-10 text-center space-y-4">
+              <p className="text-3xl font-black uppercase text-main">Listo para buscar</p>
+              <p className="font-mono text-main max-w-2xl mx-auto">
+                Usa la pregunta PICO de la Fase 1 para disparar consultas en Semantic Scholar y PubMed. La barra inferior te
+                permitirá guardar candidatos seleccionados.
+              </p>
+            </div>
+          ) : null}
+
+          {papers.length > 0 ? (
+            <div className="grid lg:grid-cols-2 gap-6">
+              {papers.map((paper) => (
+                <PaperCard
+                  key={paper.id}
+                  paper={paper}
+                  selected={selectedIds.has(paper.id)}
+                  onToggle={toggleSelection}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+
+        <Phase2Checklist items={checklistItems} />
+      </section>
 
       {loading ? (
         <div className="fixed inset-0 bg-black/75 text-text-main flex items-center justify-center font-mono text-xl z-40">
@@ -129,9 +184,6 @@ export const Phase2View = () => {
         </div>
       ) : null}
 
-      {showModal ? (
-        <StrategyGeneratorModal strategies={strategies} onClose={() => setShowModal(false)} />
-      ) : null}
     </div>
   )
 }

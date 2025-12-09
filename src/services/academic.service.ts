@@ -1,4 +1,5 @@
-import type { ExternalPaper, ExternalSource, SearchStrategy } from '../features/phase2_search/types.ts'
+import type { Phase1Data } from '../features/phase1_planning/types.ts'
+import type { DatabaseStrategy, ExternalPaper, ExternalSource, KeywordDerivation, Phase2Strategy } from '../features/phase2_search/types.ts'
 
 const mockPapers: ExternalPaper[] = [
   {
@@ -162,18 +163,129 @@ export const searchFederated = async (query: string, databases: ExternalSource[]
   return results.flat()
 }
 
-export const generateSearchStrategies = async (topic: string): Promise<SearchStrategy[]> => {
-  await delay(800)
-  return [
-    {
-      database: 'Scopus',
-      query: `TITLE-ABS-KEY ( "gamification" AND "${topic}" ) AND ( "systematic review" OR "evidence-based" )`,
-      notes: 'Limitar a publicaciones 2019-2025, áreas Medicine OR Computer Science.',
+const proxyPost = async <T>(path: string, body: unknown): Promise<T> => {
+  if (!hasProxy) {
+    throw new Error('Proxy base URL is not configured')
+  }
+
+  const response = await fetch(`${PROXY_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
     },
-    {
-      database: 'Web of Science',
-      query: `TS=("gamified learning" NEAR/3 analytics) AND TS=("LLM" OR "large language model") AND TS=(${topic})`,
-      notes: 'Filtrar colecciones SCI-EXPANDED y ESCI.',
-    },
-  ]
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`Proxy request failed (${response.status}): ${text}`)
+  }
+
+  return (await response.json()) as T
+}
+
+const SAMPLE_KEYWORD_MATRIX: KeywordDerivation[] = [
+  {
+    component: 'P',
+    concept: 'Evaluación argumentativa',
+    terms: [
+      '"argument evaluation"',
+      '"argumentation analysis"',
+      '"argument mining"',
+      '"argument quality assessment"',
+      '"argument structure detection"',
+    ],
+  },
+  {
+    component: 'I',
+    concept: 'LLMs y procesamiento semántico',
+    terms: [
+      '"large language model"',
+      'LLM',
+      '"transformer model"',
+      'BERT',
+      'GPT',
+      '"semantic analysis"',
+      '"deep contextual embedding"',
+    ],
+  },
+  {
+    component: 'C',
+    concept: 'Métodos tradicionales de PLN',
+    terms: [
+      '"traditional NLP"',
+      '"rule-based system"',
+      '"supervised learning"',
+      '"machine learning baseline"',
+      '"non-contextual embedding"',
+      'Word2Vec',
+      'GloVe',
+    ],
+  },
+  {
+    component: 'O',
+    concept: 'Desempeño en evaluación argumentativa',
+    terms: ['accuracy', 'validity', 'reliability', 'performance', 'interpretability', '"evaluation metrics"'],
+  },
+]
+
+const SAMPLE_DATABASE_STRATEGIES: DatabaseStrategy[] = [
+  {
+    database: 'PubMed',
+    query:
+      '("argumentation analysis"[Title/Abstract] OR "argument mining") AND ("large language model" OR GPT OR BERT) AND ("traditional NLP" OR "rule-based")',
+    filters: 'Últimos 5 años · Estudios revisados por pares · Idioma: inglés',
+    estimatedResults: '45-70 registros',
+  },
+  {
+    database: 'Semantic Scholar',
+    query:
+      '("argument evaluation" OR "argument structure detection") AND ("transformer model" OR "semantic analysis") AND ("baseline model" OR "machine learning")',
+    filters: 'Computer Science · Education · Fecha ≥ 2020',
+    estimatedResults: '60-90 registros',
+  },
+  {
+    database: 'CrossRef',
+    query:
+      '(title:"argument mining" OR title:"argument evaluation") AND (abstract:"large language model" OR abstract:"deep contextual embedding")',
+    filters: 'Article OR Proceeding · DOI obligatorio',
+    estimatedResults: '80-120 registros',
+  },
+  {
+    database: 'Europe PMC',
+    query:
+      '("argumentation analysis" OR "argument mining") AND ("LLM" OR "transformer") AND ("evaluation metrics" OR accuracy OR validity)',
+    filters: 'Open Access · 2020-2025',
+    estimatedResults: '30-50 registros',
+  },
+]
+
+const SAMPLE_STRATEGY: Phase2Strategy = {
+  question: '¿Cómo impactan los modelos de lenguaje grandes en la evaluación automática de la argumentación?',
+  keywordMatrix: SAMPLE_KEYWORD_MATRIX,
+  databaseStrategies: SAMPLE_DATABASE_STRATEGIES,
+  recommendations: [
+    'Utiliza las subpreguntas derivadas para crear bloques adicionales (AND) cuando necesites especificar dominio: educativo, legal o debates.',
+    'Combina los términos del componente C solo cuando busques comparaciones directas; para estudios de caso puro, omítelos para ampliar el recall.',
+    'Revisa cada 3 meses nuevos términos MeSH y actualiza el bloque P con vocabulario controlado (p.ej., "Argumentation" [MeSH]).',
+  ],
+}
+
+export const generatePhase2Strategy = async (phase1: Phase1Data, topic: string): Promise<Phase2Strategy> => {
+  const sanitizedTopic = topic.trim() || 'Revisión sistemática en IA educativa'
+
+  if (!hasProxy) {
+    await delay(800)
+    return SAMPLE_STRATEGY
+  }
+
+  try {
+    return await proxyPost<Phase2Strategy>('/groq/search-strategy', {
+      topic: sanitizedTopic,
+      phase1,
+    })
+  } catch (error) {
+    console.error('generatePhase2Strategy error', error)
+    return SAMPLE_STRATEGY
+  }
 }

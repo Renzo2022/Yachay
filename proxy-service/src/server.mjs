@@ -240,6 +240,49 @@ ${JSON.stringify(aggregated, null, 2)}`,
   }
 });
 
+app.post("/groq/search-strategy", async (req, res) => {
+  const { topic, phase1 } = req.body ?? {};
+  if (!topic || !phase1) {
+    res.status(400).json({ error: "Missing topic or phase1 data" });
+    return;
+  }
+
+  try {
+    const groq = ensureGroq();
+    const response = await groq.chat.completions.create({
+      model: GROQ_MODEL,
+      temperature: 0.15,
+      max_tokens: 2048,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Eres un documentalista experto en búsquedas federadas (PubMed, Semantic Scholar, CrossRef, Europe PMC). Responde solo JSON con campos {question, keywordMatrix, databaseStrategies, recommendations}. keywordMatrix debe traer objetos {component:'P'|'I'|'C'|'O', concept, terms[]} (mínimo 4 términos cada uno). databaseStrategies debe incluir por lo menos las cuatro bases mencionadas con {database, query, filters, estimatedResults}. recommendations es un array de strings accionables.",
+        },
+        {
+          role: "user",
+          content: `Tema: "${topic}"
+Protocolo Fase 1:
+${JSON.stringify(phase1, null, 2)}
+
+Instrucciones:
+1. Define question con la pregunta principal resultante (o reformulada si falta).
+2. keywordMatrix debe integrar términos y sinónimos derivados de cada componente PICO y de las subpreguntas.
+3. databaseStrategies debe usar operadores booleanos (AND/OR), truncamientos y filtros claros (fechas, idioma, tipo de documento) para PubMed, Semantic Scholar, CrossRef y Europe PMC. Incluye un estimado textual de resultados esperados (ej. "40-60 registros").
+4. recommendations debe justificar la cobertura semántica, comparación explícita, refinamientos sugeridos y consideraciones de reproducibilidad.`,
+        },
+      ],
+    });
+
+    const content = response.choices?.[0]?.message?.content;
+    res.json(ensureJsonObject(content));
+  } catch (error) {
+    const details = extractErrorDetails(error);
+    console.error("/groq/search-strategy", details);
+    res.status(500).json({ error: "Groq search strategy failed", details });
+  }
+});
+
 const fetchJson = async (url, options) => {
   const response = await fetch(url, options);
   if (!response.ok) {

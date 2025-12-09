@@ -13,8 +13,24 @@ export interface ExternalPaper {
   citationCount?: number
 }
 
-export interface SearchStrategy {
+export type PicoComponent = 'P' | 'I' | 'C' | 'O'
+
+export interface KeywordDerivation {
+  component: PicoComponent
+  concept: string
+  terms: string[]
+}
+
+export interface DatabaseStrategy {
   database: string
   query: string
-  notes?: string
+  filters: string
+  estimatedResults: string
+}
+
+export interface Phase2Strategy {
+  question: string
+  keywordMatrix: KeywordDerivation[]
+  databaseStrategies: DatabaseStrategy[]
+  recommendations: string[]
 }

@@ -28,8 +28,12 @@ export const SearchHeader = ({ defaultQuestion, onSearch, onGenerateStrategies, 
   return (
     <section className="border-4 border-black bg-accent-success/20 p-6 shadow-brutal rounded-none space-y-4">
       <header className="flex flex-col gap-2">
-        <p className="text-xs font-mono uppercase tracking-[0.4em] text-main">Fase 2 · Búsqueda federada</p>
-        <h2 className="text-3xl font-black uppercase text-main">Configura tu búsqueda</h2>
+        <p className="text-xs font-mono uppercase tracking-[0.4em] text-main">Fase 2 · Búsqueda</p>
+        <h2 className="text-3xl font-black uppercase text-main">Diseña tu estrategia federada</h2>
+        <p className="font-mono text-sm text-main">
+          Usa la pregunta PICO y las subpreguntas de la fase anterior para combinar consultas semánticas y booleanas en PubMed,
+          Semantic Scholar, CrossRef y Europe PMC.
+        </p>
       </header>
 
       <BrutalInput
