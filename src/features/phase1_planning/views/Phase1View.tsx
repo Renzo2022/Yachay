@@ -43,10 +43,11 @@ export const Phase1View = () => {
   }
 
   const checklistItems = [
-    { id: 'mainQuestion', label: 'Definir pregunta principal', completed: completionChecklist.mainQuestion },
-    { id: 'pico', label: 'Completar estructura PICO', completed: completionChecklist.pico },
-    { id: 'objectives', label: 'Documentar objetivos y subpreguntas', completed: completionChecklist.objectives },
-    { id: 'criteria', label: 'Establecer criterios de inclusión/exclusión', completed: completionChecklist.criteria },
+    { id: 'mainQuestion', label: 'Definir pregunta principal (PICO completo)', completed: completionChecklist.mainQuestion },
+    { id: 'subquestions', label: 'Generar subpreguntas derivadas (3 a 5)', completed: completionChecklist.subquestions },
+    { id: 'coherence', label: 'Validar coherencia entre preguntas', completed: completionChecklist.coherence },
+    { id: 'justification', label: 'Definir objetivos y justificación', completed: completionChecklist.justification },
+    { id: 'criteria', label: 'Definir criterios de inclusión/exclusión', completed: completionChecklist.criteria },
   ]
 
   return (
@@ -55,7 +56,7 @@ export const Phase1View = () => {
 
       <section className="grid lg:grid-cols-[minmax(0,3fr)_minmax(280px,1fr)] gap-6">
         <div className="space-y-6">
-          <BrutalCard className="bg-neutral-100" title="Pregunta principal">
+          <BrutalCard className="bg-neutral-100" title="Pregunta principal" titleClassName="text-black">
             <BrutalInput
               multiline
               value={data.mainQuestion}
@@ -64,18 +65,19 @@ export const Phase1View = () => {
             />
           </BrutalCard>
 
-          <BrutalCard className="bg-neutral-100" title="Subpreguntas clave">
+          <BrutalCard className="bg-neutral-100" title="Subpreguntas clave" titleClassName="text-black">
             <BrutalInput
               multiline
               value={getListTextValue('subquestions')}
               onChange={(event) => updateListField('subquestions', event.target.value)}
               badge={aiBadgeFor('subquestions') ? '🤖 IA' : undefined}
             />
+            <p className="mt-2 font-mono text-xs text-main">Recuerda mantener entre 3 y 5 subpreguntas.</p>
           </BrutalCard>
 
           <PicoGrid pico={data.pico} onChange={updatePicoField} aiBadgeFor={aiBadgeFor} />
 
-          <BrutalCard className="bg-neutral-100" title="Objetivos de la revisión">
+          <BrutalCard className="bg-neutral-100" title="Objetivos de la revisión" titleClassName="text-black">
             <BrutalInput
               multiline
               value={data.objectives}
@@ -84,8 +86,26 @@ export const Phase1View = () => {
             />
           </BrutalCard>
 
+          <BrutalCard className="bg-neutral-100" title="Validación de coherencia" titleClassName="text-black">
+            <BrutalInput
+              multiline
+              value={data.coherenceAnalysis}
+              onChange={(event) => updateField('coherenceAnalysis', event.target.value)}
+              badge={aiBadgeFor('coherenceAnalysis') ? '🤖 IA' : undefined}
+            />
+          </BrutalCard>
+
+          <BrutalCard className="bg-neutral-100" title="Justificación metodológica" titleClassName="text-black">
+            <BrutalInput
+              multiline
+              value={data.methodologicalJustification}
+              onChange={(event) => updateField('methodologicalJustification', event.target.value)}
+              badge={aiBadgeFor('methodologicalJustification') ? '🤖 IA' : undefined}
+            />
+          </BrutalCard>
+
           <div className="grid md:grid-cols-2 gap-4">
-            <BrutalCard className="bg-neutral-100" title="Criterios de inclusión">
+            <BrutalCard className="bg-neutral-100" title="Criterios de inclusión" titleClassName="text-accent-success">
               <BrutalInput
                 multiline
                 value={getListTextValue('inclusionCriteria')}
@@ -93,7 +113,7 @@ export const Phase1View = () => {
                 badge={aiBadgeFor('inclusionCriteria') ? '🤖 IA' : undefined}
               />
             </BrutalCard>
-            <BrutalCard className="bg-neutral-100" title="Criterios de exclusión">
+            <BrutalCard className="bg-neutral-100" title="Criterios de exclusión" titleClassName="text-accent-danger">
               <BrutalInput
                 multiline
                 value={getListTextValue('exclusionCriteria')}

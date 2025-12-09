@@ -83,7 +83,7 @@ app.post("/groq/protocol", async (req, res) => {
         },
         {
           role: "user",
-          content: `Genera un protocolo para \\\"${topic}\\\" siguiendo este esquema:
+          content: `Genera un protocolo para "${topic}" siguiendo este esquema (3 a 5 subpreguntas):
 {
   "mainQuestion": "",
   "pico": {
@@ -92,6 +92,10 @@ app.post("/groq/protocol", async (req, res) => {
     "comparison": "",
     "outcome": ""
   },
+  "subquestions": [],
+  "objectives": "",
+  "coherenceAnalysis": "",
+  "methodologicalJustification": "",
   "inclusionCriteria": [],
   "exclusionCriteria": []
 }`,

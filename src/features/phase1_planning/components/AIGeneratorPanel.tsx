@@ -26,12 +26,12 @@ export const AIGeneratorPanel = ({ initialTopic, onGenerate }: AIGeneratorPanelP
   return (
     <section className="border-4 border-black bg-neutral-100 p-6 shadow-brutal rounded-none space-y-4">
       <header className="flex flex-col gap-1">
-        <p className="text-xs font-mono uppercase tracking-[0.4em] text-accent-secondary">Asistente IA</p>
+        <p className="text-xs font-mono uppercase tracking-[0.4em] text-black">Fase 1 · Planificación</p>
         <h3 className="text-3xl font-black uppercase text-main">Generador PICO inteligente</h3>
       </header>
       <BrutalInput
-        label="Describe tu tema de investigación"
         multiline
+        placeholder="Describe tu tema de investigación"
         value={topic}
         onChange={(event) => setTopic(event.target.value)}
         error={error ?? undefined}
@@ -39,11 +39,11 @@ export const AIGeneratorPanel = ({ initialTopic, onGenerate }: AIGeneratorPanelP
       <div className="flex flex-wrap items-center gap-4">
         <BrutalButton
           variant="secondary"
-          className="bg-accent-secondary text-main border-black flex-1"
+          className="bg-accent-primary text-black border-black flex-1"
           onClick={handleGenerate}
           disabled={loading}
         >
-          🤖 Generar Protocolo Mágico
+          Generar Protocolo Con IA
         </BrutalButton>
         {loading ? (
           <div className="flex items-center gap-3 font-mono text-sm text-main">

@@ -12,17 +12,17 @@ type PicoGridProps = {
 }
 
 const CARD_STYLES: Record<keyof PicoGridProps['pico'], string> = {
-  population: 'border-blue-500',
-  intervention: 'border-green-500',
-  comparison: 'border-orange-500',
-  outcome: 'border-purple-600',
+  population: 'border-[#3b82f6]',
+  intervention: 'border-[#22c55e]',
+  comparison: 'border-[#f97316]',
+  outcome: 'border-[#9333ea]',
 }
 
-const LABELS: Record<keyof PicoGridProps['pico'], string> = {
-  population: 'P · Población',
-  intervention: 'I · Intervención',
-  comparison: 'C · Comparación',
-  outcome: 'O · Resultados',
+const LABELS: Record<keyof PicoGridProps['pico'], { text: string; color: string }> = {
+  population: { text: 'P · Población', color: 'text-[#3b82f6]' },
+  intervention: { text: 'I · Intervención', color: 'text-[#22c55e]' },
+  comparison: { text: 'C · Comparación', color: 'text-[#f97316]' },
+  outcome: { text: 'O · Resultados', color: 'text-[#9333ea]' },
 }
 
 export const PicoGrid = ({ pico, onChange, aiBadgeFor }: PicoGridProps) => (
@@ -32,7 +32,8 @@ export const PicoGrid = ({ pico, onChange, aiBadgeFor }: PicoGridProps) => (
       return (
         <div key={key} className={`border-4 ${CARD_STYLES[typedKey]} bg-neutral-100 p-4 shadow-brutal`}>
           <BrutalInput
-            label={LABELS[typedKey]}
+            label={LABELS[typedKey].text}
+            labelClassName={LABELS[typedKey].color}
             multiline
             value={value}
             onChange={(event) => onChange(typedKey, event.target.value)}

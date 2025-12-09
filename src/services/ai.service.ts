@@ -43,6 +43,10 @@ export type GeneratedProtocolPayload = {
       comparison: string
       outcome: string
     }
+    subquestions: string[]
+    objectives: string
+    coherenceAnalysis: string
+    methodologicalJustification: string
     inclusionCriteria: string[]
     exclusionCriteria: string[]
   }
@@ -93,12 +97,41 @@ const PICO_TEMPLATE: GeneratedProtocolPayload['protocol']['pico'] = {
 const PROTOCOL_RESPONSE: GeneratedProtocolPayload['protocol'] = {
   mainQuestion: '¿Cómo impacta la evaluación automatizada con IA en la calidad de la retroalimentación en cursos STEM?',
   pico: PICO_TEMPLATE,
+  subquestions: [
+    '¿Cómo se compara la precisión de la retroalimentación automática basada en IA frente a rúbricas manuales?',
+    '¿Qué rol cumple el contexto institucional en la adopción de plataformas de evaluación automatizada?',
+    '¿Qué métricas de resultados (tiempo, satisfacción, desempeño) mejoran con la IA vs métodos tradicionales?',
+  ],
+  objectives: 'Evaluar rigurosamente la eficacia y coherencia metodológica de las plataformas de evaluación automática con IA frente a enfoques tradicionales.',
+  coherenceAnalysis: 'La pregunta principal, sus subpreguntas y el modelo PICO se alinean al contrastar explícitamente la intervención (IA) con métodos tradicionales dentro de contextos educativos similares.',
+  methodologicalJustification:
+    'Se emplea PICO para asegurar comparabilidad entre intervenciones tecnológicas y controles tradicionales, habilitando métricas cuantificables y reproducibles.',
   inclusionCriteria: ['Estudios revisados por pares', 'Publicaciones a partir de 2018', 'Contexto universitario'],
   exclusionCriteria: ['Estudios sin datos cuantitativos', 'Artículos de opinión sin metodología'],
 }
 
 const mapProtocolToPhase1 = (topic: string, payload: GeneratedProtocolPayload): Phase1Data => {
   const pico = payload.protocol.pico ?? PICO_TEMPLATE
+  const ensureSubquestions = (subquestions: string[]) => {
+    const cleaned = subquestions.map((entry) => entry.trim()).filter(Boolean)
+    if (cleaned.length >= 3 && cleaned.length <= 5) return cleaned
+
+    if (cleaned.length > 5) {
+      return cleaned.slice(0, 5)
+    }
+
+    const defaults = PROTOCOL_RESPONSE.subquestions
+    const combined = [...cleaned]
+    let index = 0
+    while (combined.length < 3 && index < defaults.length) {
+      if (!combined.includes(defaults[index])) {
+        combined.push(defaults[index])
+      }
+      index += 1
+    }
+    return combined.slice(0, 5)
+  }
+
   const inclusion =
     payload.protocol.inclusionCriteria?.length ? payload.protocol.inclusionCriteria : PROTOCOL_RESPONSE.inclusionCriteria
   const exclusion =
@@ -106,11 +139,16 @@ const mapProtocolToPhase1 = (topic: string, payload: GeneratedProtocolPayload): 
 
   return {
     mainQuestion: payload.protocol.mainQuestion || `¿Cómo impacta ${topic} en los resultados de aprendizaje y retención?`,
-    subquestions: [
-      `¿De qué manera ${pico.intervention} modifica los resultados (${pico.outcome}) respecto a ${pico.comparison}?`,
-      `¿Qué características definen a la población objetivo (${pico.population}) en los estudios analizados?`,
-    ],
-    objectives: `Documentar sistemáticamente la evidencia publicada sobre ${topic}, alineada a PRISMA y criterios PICO.`,
+    subquestions: ensureSubquestions(payload.protocol.subquestions ?? PROTOCOL_RESPONSE.subquestions),
+    objectives:
+      payload.protocol.objectives ??
+      `Documentar sistemáticamente la evidencia publicada sobre ${topic}, alineada a PRISMA y criterios PICO.`,
+    coherenceAnalysis:
+      payload.protocol.coherenceAnalysis ??
+      'Validar que la pregunta principal, subpreguntas y componentes PICO mantengan consistencia lógica y temporal.',
+    methodologicalJustification:
+      payload.protocol.methodologicalJustification ??
+      'Se usa PICO para garantizar comparabilidad directa entre la intervención propuesta y su contraparte control.',
     pico: {
       population: pico.population || PICO_TEMPLATE.population,
       intervention: pico.intervention || `${topic} potenciadas con IA`,

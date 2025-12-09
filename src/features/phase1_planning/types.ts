@@ -8,6 +8,8 @@ export interface Phase1Data {
     outcome: string
   }
   objectives: string
+  coherenceAnalysis: string
+  methodologicalJustification: string
   inclusionCriteria: string[]
   exclusionCriteria: string[]
 }
@@ -16,6 +18,8 @@ export const createPhase1Defaults = (): Phase1Data => ({
   mainQuestion: '',
   subquestions: [],
   objectives: '',
+  coherenceAnalysis: '',
+  methodologicalJustification: '',
   pico: {
     population: '',
     intervention: '',

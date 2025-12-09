@@ -13,16 +13,35 @@ const getArrayFromText = (text: string) =>
 
 const getTextFromArray = (values: string[]) => values.join('\n')
 
+const buildPhase1State = (phase?: Partial<Phase1Data>): Phase1Data => {
+  const defaults = createPhase1Defaults()
+  return {
+    ...defaults,
+    ...phase,
+    pico: {
+      ...defaults.pico,
+      ...phase?.pico,
+    },
+    subquestions: phase?.subquestions ?? defaults.subquestions,
+    inclusionCriteria: phase?.inclusionCriteria ?? defaults.inclusionCriteria,
+    exclusionCriteria: phase?.exclusionCriteria ?? defaults.exclusionCriteria,
+    coherenceAnalysis: phase?.coherenceAnalysis ?? defaults.coherenceAnalysis,
+    methodologicalJustification: phase?.methodologicalJustification ?? defaults.methodologicalJustification,
+    objectives: phase?.objectives ?? defaults.objectives,
+    mainQuestion: phase?.mainQuestion ?? defaults.mainQuestion,
+  }
+}
+
 export const usePhase1 = () => {
   const project = useProject()
-  const [data, setData] = useState<Phase1Data>(() => project.phase1 ?? createPhase1Defaults())
+  const [data, setData] = useState<Phase1Data>(() => buildPhase1State(project.phase1))
   const [isSaving, setIsSaving] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [aiFields, setAiFields] = useState<Set<AiField>>(new Set())
   const isInitialLoad = useRef(true)
 
   useEffect(() => {
-    setData(project.phase1 ?? createPhase1Defaults())
+    setData(buildPhase1State(project.phase1))
     isInitialLoad.current = true
   }, [project.id])
 
@@ -68,6 +87,8 @@ export const usePhase1 = () => {
     const newAiFields = new Set<AiField>([
       'mainQuestion',
       'objectives',
+      'coherenceAnalysis',
+      'methodologicalJustification',
       'subquestions',
       'inclusionCriteria',
       'exclusionCriteria',
@@ -82,14 +103,19 @@ export const usePhase1 = () => {
   const aiBadgeFor = (field: AiField) => aiFields.has(field)
 
   const completionChecklist = useMemo(
-    () => ({
-      mainQuestion: Boolean(data.mainQuestion.trim()),
-      pico: ['population', 'intervention', 'comparison', 'outcome'].every(
+    () => {
+      const picoComplete = ['population', 'intervention', 'comparison', 'outcome'].every(
         (key) => Boolean(data.pico[key as keyof Phase1Data['pico']].trim()),
-      ),
-      objectives: Boolean(data.objectives.trim()),
-      criteria: data.inclusionCriteria.length > 0 && data.exclusionCriteria.length > 0,
-    }),
+      )
+      const subquestionsCount = data.subquestions.length
+      return {
+        mainQuestion: Boolean(data.mainQuestion.trim()) && picoComplete,
+        subquestions: subquestionsCount >= 3 && subquestionsCount <= 5,
+        coherence: Boolean(data.coherenceAnalysis.trim()),
+        justification: Boolean(data.objectives.trim()) && Boolean(data.methodologicalJustification.trim()),
+        criteria: data.inclusionCriteria.length > 0 && data.exclusionCriteria.length > 0,
+      }
+    },
     [data],
   )
 

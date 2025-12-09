@@ -4,6 +4,7 @@ import { cn } from '../../utils/cn.ts'
 
 type BaseProps = {
   label?: string
+  labelClassName?: string
   error?: string
   badge?: ReactNode
 }
@@ -13,13 +14,13 @@ type BrutalInputProps =
   | (BaseProps & { multiline: true } & TextareaHTMLAttributes<HTMLTextAreaElement>)
 
 export const BrutalInput = forwardRef<HTMLInputElement | HTMLTextAreaElement, BrutalInputProps>(
-  ({ label, error, className, id, badge, multiline, ...props }, ref) => {
+  ({ label, labelClassName, error, className, id, badge, multiline, ...props }, ref) => {
     const inputId = id ?? label?.toLowerCase().replace(/\s+/g, '-')
     const Component = (multiline ? 'textarea' : 'input') as 'textarea' | 'input'
 
     return (
       <label className="flex flex-col gap-2 font-mono text-sm uppercase text-text-main relative" htmlFor={inputId}>
-        {label ? <span>{label}</span> : null}
+        {label ? <span className={cn(labelClassName ?? 'text-text-main')}>{label}</span> : null}
         <div className="relative">
           <Component
             id={inputId}

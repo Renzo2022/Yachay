@@ -33,7 +33,7 @@ export const PhaseChecklist = ({ items }: PhaseChecklistProps) => {
   return (
     <aside className="border-4 border-black bg-neutral-100 shadow-brutal rounded-none p-5 space-y-4">
       <header>
-        <p className="text-xs font-mono uppercase tracking-[0.3em] text-accent-secondary">Checklist</p>
+        <p className="text-xs font-mono uppercase tracking-[0.3em] text-black">Checklist</p>
         <h3 className="text-2xl font-black uppercase text-main">Fase 1</h3>
       </header>
       <ul className="space-y-3">
