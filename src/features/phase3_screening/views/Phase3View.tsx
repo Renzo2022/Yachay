@@ -11,7 +11,7 @@ import {
   updatePrismaData,
 } from '../../projects/project.service.ts'
 import { createPrismaData, type Candidate, type PrismaData } from '../../projects/types.ts'
-import { screenPaper } from '../../../services/ai.service.ts'
+import { classifyCandidatesWithGemini } from '../../../services/ai.service.ts'
 import { BrutalButton } from '../../../core/ui-kit/BrutalButton.tsx'
 import { BrutalCard } from '../../../core/ui-kit/BrutalCard.tsx'
 import { BrutalInput } from '../../../core/ui-kit/BrutalInput.tsx'
@@ -26,6 +26,8 @@ export const Phase3View = () => {
   const [isBatching, setIsBatching] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [editingPrisma, setEditingPrisma] = useState({ duplicates: '0', additional: '0' })
+  const [showResultsTable, setShowResultsTable] = useState(false)
+  const [tableReady, setTableReady] = useState(false)
 
   useEffect(() => {
     const unsubscribeCandidates = listenToCandidates(project.id, setCandidates)
@@ -46,6 +48,20 @@ export const Phase3View = () => {
     () => candidates.filter((candidate) => !candidate.userConfirmed),
     [candidates],
   )
+  const aiResults = useMemo(
+    () =>
+      candidates
+        .filter((candidate) => Boolean(candidate.aiJustification))
+        .map((candidate) => ({
+          id: candidate.id,
+          title: candidate.title,
+          decision: (candidate.decision as NonNullable<Candidate['decision']>) ?? 'uncertain',
+          justification: candidate.aiJustification ?? candidate.reason ?? 'Sin justificación proporcionada.',
+          subtopic: candidate.aiSubtopic ?? '—',
+        })),
+    [candidates],
+  )
+  const mainQuestion = project.phase1?.mainQuestion?.trim() || 'Define tu pregunta principal en la Fase 1 para contextualizar el cribado.'
 
   const allConfirmed = candidates.length > 0 && candidates.every((candidate) => candidate.userConfirmed)
   const duplicatesManaged = prismaData.identified > 0 && prismaData.identified >= prismaData.duplicates
@@ -69,25 +85,80 @@ export const Phase3View = () => {
 
   const handleBatchScreening = async () => {
     if (pendingCandidates.length === 0) return
+    setShowResultsTable(false)
+    setTableReady(false)
     setIsBatching(true)
-    for (const candidate of pendingCandidates) {
-      setProcessingIds((prev) => new Set(prev).add(candidate.id))
-      const screened = await screenPaper(candidate, project.phase1)
-      await updateCandidateRecord(project.id, candidate.id, {
-        decision: screened.decision,
-        reason: screened.reason,
-        confidence: screened.confidence,
-        screeningStatus: screened.screeningStatus,
-        processedAt: screened.processedAt,
-      })
-      setProcessingIds((prev) => {
-        const next = new Set(prev)
-        next.delete(candidate.id)
-        return next
-      })
+    setProcessingIds(new Set(pendingCandidates.map((candidate) => candidate.id)))
+    setStatusMessage('Enviando candidatos a Gemini…')
+    try {
+      const results = await classifyCandidatesWithGemini(pendingCandidates, project.phase1)
+      const pendingMap = new Map(pendingCandidates.map((candidate) => [candidate.id, candidate]))
+      const updatedIds = new Set<string>()
+      const now = Date.now()
+
+      await Promise.all(
+        results.map(async (entry) => {
+          const target = pendingMap.get(entry.id)
+          if (!target) return
+          updatedIds.add(entry.id)
+          await updateCandidateRecord(project.id, entry.id, {
+            decision: entry.decision,
+            reason: entry.justification,
+            aiJustification: entry.justification,
+            aiSubtopic: entry.subtopic,
+            confidence: 'medium',
+            screeningStatus: 'screened',
+            processedAt: now,
+          })
+        }),
+      )
+
+      const fallbackUpdates = pendingCandidates
+        .filter((candidate) => !updatedIds.has(candidate.id))
+        .map((candidate) =>
+          updateCandidateRecord(project.id, candidate.id, {
+            decision: 'uncertain',
+            reason: 'Sin respuesta del modelo para este registro.',
+            aiJustification: 'Sin respuesta del modelo para este registro.',
+            aiSubtopic: candidate.aiSubtopic,
+            confidence: 'low',
+            screeningStatus: 'screened',
+            processedAt: now,
+          }),
+        )
+      if (fallbackUpdates.length) {
+        await Promise.all(fallbackUpdates)
+      }
+
+      setTableReady(true)
+      setStatusMessage('Cribado IA completado')
+    } catch (error) {
+      console.error('handleBatchScreening', error)
+      setStatusMessage('Error al clasificar con Gemini')
+    } finally {
+      setProcessingIds(new Set())
+      setIsBatching(false)
+      setTimeout(() => setStatusMessage(null), 3000)
     }
-    setIsBatching(false)
   }
+
+  const decisionLabels: Record<NonNullable<Candidate['decision']>, string> = {
+    include: 'Incluir',
+    exclude: 'Excluir',
+    uncertain: 'Duda',
+  }
+  const decisionClasses: Record<NonNullable<Candidate['decision']>, string> = {
+    include: 'bg-accent-success text-main border-black',
+    exclude: 'bg-accent-danger text-text-main border-black',
+    uncertain: 'bg-accent-warning text-main border-black',
+  }
+
+  useEffect(() => {
+    if (aiResults.length === 0) {
+      setTableReady(false)
+      setShowResultsTable(false)
+    }
+  }, [aiResults.length])
 
   const handleConfirm = async (candidate: Candidate, decision: Candidate['decision']) => {
     await confirmCandidateDecision(project.id, candidate, decision)
@@ -133,40 +204,86 @@ export const Phase3View = () => {
         <div className="flex-1 space-y-6">
           {activeTab === 'ai' ? (
             <div className="space-y-6">
-              <BrutalCard className="bg-neutral-100">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-xs font-mono uppercase tracking-[0.3em] text-accent-warning">
-                  {pendingCandidates.length} Candidatos pendientes
-                </p>
-                <p className="text-sm font-mono text-main">Total guardados: {candidates.length}</p>
-              </div>
-              <BrutalButton
-                variant="secondary"
-                className="bg-accent-warning text-main border-black"
-                onClick={handleBatchScreening}
-                disabled={pendingCandidates.length === 0 || isBatching}
-              >
-                🤖 Iniciar cribado IA
-              </BrutalButton>
-            </div>
-          </BrutalCard>
+              <BrutalCard className="bg-neutral-100 space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-mono uppercase tracking-[0.3em] text-accent-warning">
+                      {pendingCandidates.length} Candidatos pendientes
+                    </p>
+                    <p className="text-sm font-mono text-main">Total guardados: {candidates.length}</p>
+                  </div>
+                </div>
+                <div className="border-3 border-black bg-white p-4 space-y-2">
+                  <p className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-500">Pregunta principal</p>
+                  <p className="text-lg font-black text-main">{mainQuestion}</p>
+                </div>
+                <div className="flex flex-wrap gap-3 pt-2">
+                  <BrutalButton
+                    variant="secondary"
+                    className="flex-1 bg-accent-warning text-main border-black"
+                    onClick={handleBatchScreening}
+                    disabled={pendingCandidates.length === 0 || isBatching}
+                  >
+                    🤖 Iniciar cribado IA
+                  </BrutalButton>
+                  <BrutalButton
+                    variant="secondary"
+                    className="flex-1 bg-neutral-900 text-text-main border-black disabled:opacity-60 disabled:cursor-not-allowed"
+                    onClick={() => setShowResultsTable(true)}
+                    disabled={!tableReady || isBatching}
+                  >
+                    📊 Generar tabla
+                  </BrutalButton>
+                </div>
+              </BrutalCard>
 
               {candidates.length === 0 ? (
                 <div className="border-4 border-dashed border-accent-warning bg-neutral-900 text-text-main text-center py-20 px-8 shadow-brutal">
                   No hay candidatos cargados. Completa la fase de búsqueda para continuar.
                 </div>
               ) : (
-                <div className="grid lg:grid-cols-2 gap-6">
-                  {candidates.map((candidate) => (
-                    <ScreeningCard
-                      key={candidate.id}
-                      candidate={candidate}
-                      processing={processingIds.has(candidate.id)}
-                      onConfirm={(decision) => handleConfirm(candidate, decision)}
-                    />
-                  ))}
-                </div>
+                <>
+                  {showResultsTable && tableReady && aiResults.length > 0 ? (
+                    <div className="border-4 border-black bg-white shadow-brutal overflow-x-auto">
+                      <table className="min-w-full table-fixed text-sm font-mono">
+                        <thead className="bg-neutral-900 text-text-main uppercase tracking-[0.2em] text-xs">
+                          <tr>
+                            <th className="px-4 py-3 text-left">Título</th>
+                            <th className="px-4 py-3 text-left">Decisión IA</th>
+                            <th className="px-4 py-3 text-left w-1/2">Justificación</th>
+                            <th className="px-4 py-3 text-left">Subtema</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {aiResults.map((result) => (
+                            <tr key={result.id} className="border-t border-neutral-200">
+                              <td className="px-4 py-3">
+                                <p className="font-bold text-main">{result.title}</p>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-1 inline-block font-black ${decisionClasses[result.decision]}`}>
+                                  {decisionLabels[result.decision]}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-neutral-800">{result.justification}</td>
+                              <td className="px-4 py-3 text-neutral-800">{result.subtopic}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+                  <div className="grid lg:grid-cols-2 gap-6">
+                    {candidates.map((candidate) => (
+                      <ScreeningCard
+                        key={candidate.id}
+                        candidate={candidate}
+                        processing={processingIds.has(candidate.id)}
+                        onConfirm={(decision) => handleConfirm(candidate, decision)}
+                      />
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           ) : (

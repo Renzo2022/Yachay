@@ -59,6 +59,7 @@ export interface Candidate extends ExternalPaper {
   decision?: ScreeningDecision
   confidence?: ScreeningConfidence
   reason?: string
+  aiJustification?: string
   aiSubtopic?: string
   userConfirmed?: boolean
   processedAt?: number
