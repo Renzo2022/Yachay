@@ -87,6 +87,9 @@ export const Phase2View = () => {
     lastSearchResultCount: project.phase2?.lastSearchResultCount ?? null,
     documentationGeneratedAt: project.phase2?.documentationGeneratedAt ?? null,
   })
+  const [documentationSummary, setDocumentationSummary] = useState<string | null>(
+    project.phase2?.documentationSummary ?? null,
+  )
   const [derivationReady, setDerivationReady] = useState<boolean>(
     Boolean(project.phase2?.lastStrategy?.keywordMatrix?.length),
   )
@@ -107,6 +110,7 @@ export const Phase2View = () => {
     })
     setDerivationReady(Boolean(project.phase2?.lastStrategy?.keywordMatrix?.length))
     setSubquestionReady(Boolean(project.phase2?.lastStrategy?.subquestionStrategies?.length))
+    setDocumentationSummary(project.phase2?.documentationSummary ?? null)
   }, [project.phase2])
 
   const persistPhase2State = useCallback(
@@ -114,7 +118,7 @@ export const Phase2View = () => {
       try {
         const payload: Phase2Data = {
           lastStrategy:
-            override.lastStrategy !== undefined ? sanitizeStrategy(override.lastStrategy) : sanitizeStrategy(strategy),
+            override.lastStrategy !== undefined ? sanitizeStrategy(override.lastStrategy) : (strategy ?? null),
           hiddenSubquestions:
             override.hiddenSubquestions !== undefined
               ? [...override.hiddenSubquestions]
@@ -135,13 +139,15 @@ export const Phase2View = () => {
             override.documentationGeneratedAt !== undefined
               ? override.documentationGeneratedAt
               : phase2Meta.documentationGeneratedAt ?? null,
+          documentationSummary:
+            override.documentationSummary !== undefined ? override.documentationSummary : documentationSummary,
         }
         await savePhase2State(project.id, payload)
       } catch (error) {
         console.error('persistPhase2State', error)
       }
     },
-    [project.id, strategy, hiddenSubquestions, selectedSources, yearFilters, phase2Meta],
+    [project.id, strategy, hiddenSubquestions, selectedSources, yearFilters, phase2Meta, documentationSummary],
   )
 
   const handleToggleSource = (source: ExternalSource) => {
@@ -171,7 +177,14 @@ export const Phase2View = () => {
       const nextHidden = new Set<string>()
       setStrategy(payload)
       setHiddenSubquestions(nextHidden)
-      persistPhase2State({ lastStrategy: payload, hiddenSubquestions: Array.from(nextHidden) })
+      setPhase2Meta((prev) => ({ ...prev, documentationGeneratedAt: null }))
+      setDocumentationSummary(null)
+      persistPhase2State({
+        lastStrategy: payload,
+        hiddenSubquestions: Array.from(nextHidden),
+        documentationGeneratedAt: null,
+        documentationSummary: null,
+      })
       setDerivationReady(true)
       setSubquestionReady(false)
     } catch (error) {
@@ -179,7 +192,9 @@ export const Phase2View = () => {
       setStrategy(null)
       setHiddenSubquestions(new Set())
       setStrategyError('No pudimos generar la estrategia. Intenta nuevamente.')
-      persistPhase2State({ lastStrategy: null, hiddenSubquestions: [] })
+      setPhase2Meta((prev) => ({ ...prev, documentationGeneratedAt: null }))
+      setDocumentationSummary(null)
+      persistPhase2State({ lastStrategy: null, hiddenSubquestions: [], documentationGeneratedAt: null, documentationSummary: null })
       setDerivationReady(false)
       setSubquestionReady(false)
     } finally {
@@ -204,12 +219,24 @@ export const Phase2View = () => {
         keywordMatrix: strategy.keywordMatrix,
       })
       const nextStrategy: Phase2Strategy = strategy
-        ? { ...strategy, subquestionStrategies: payload.subquestionStrategies, recommendations: payload.recommendations }
+        ? {
+            ...strategy,
+            question: payload.question || strategy.question,
+            subquestionStrategies: payload.subquestionStrategies,
+            recommendations: payload.recommendations,
+          }
         : payload
       const nextHidden = new Set<string>()
       setStrategy(nextStrategy)
       setHiddenSubquestions(nextHidden)
-      persistPhase2State({ lastStrategy: nextStrategy, hiddenSubquestions: Array.from(nextHidden) })
+      setPhase2Meta((prev) => ({ ...prev, documentationGeneratedAt: null }))
+      setDocumentationSummary(null)
+      persistPhase2State({
+        lastStrategy: nextStrategy,
+        hiddenSubquestions: Array.from(nextHidden),
+        documentationGeneratedAt: null,
+        documentationSummary: null,
+      })
       showStatus('Keywords por subpregunta regeneradas.')
       setSubquestionReady(true)
     } catch (error) {
@@ -330,10 +357,27 @@ export const Phase2View = () => {
       showStatus('Necesitas una estrategia generada para documentarla.')
       return
     }
+    if (!searchPerformed) {
+      showStatus('Ejecuta al menos una búsqueda antes de documentar la estrategia.')
+      return
+    }
     const timestamp = Date.now()
+    const humanDate = new Date(timestamp).toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })
+    const sourcesLabel =
+      selectedSources.length > 0 ? selectedSources.map((source) => SOURCE_LABELS[source]).join(', ') : 'Sin fuentes registradas'
+    const summaryLines = [
+      `Fecha de registro: ${humanDate}`,
+      `Pregunta principal: ${strategy.question || project.phase1?.mainQuestion || project.name}`,
+      `Fuentes consultadas: ${sourcesLabel}`,
+      `Rango de años aplicado: ${yearFilters.from} - ${yearFilters.to}`,
+      `Última subpregunta buscada: ${phase2Meta.lastSearchSubquestion ?? 'Sin búsquedas registradas'}`,
+      `Resultados recuperados: ${phase2Meta.lastSearchResultCount ?? 0}`,
+    ]
+    const summary = summaryLines.join('\n')
+    setDocumentationSummary(summary)
     setPhase2Meta((prev) => ({ ...prev, documentationGeneratedAt: timestamp }))
-    persistPhase2State({ documentationGeneratedAt: timestamp })
-    showStatus('📄 Documentación de estrategia generada (prototipo).')
+    persistPhase2State({ documentationGeneratedAt: timestamp, documentationSummary: summary })
+    showStatus('📄 Documentación de estrategia generada en español.')
   }
 
   const checklistItems = [
@@ -412,14 +456,12 @@ export const Phase2View = () => {
             </div>
           ) : null}
 
-          {strategy && !derivationLoading && !subquestionLoading ? (
+          {strategy && !derivationLoading ? (
             <StrategySummary
               strategy={strategy}
               subquestions={visibleSubquestions}
               onRemoveSubquestion={handleRemoveSubquestion}
               disableRemoval={visibleSubquestions.length <= 1}
-              yearFilters={yearFilters}
-              onYearFiltersChange={handleYearFiltersChange}
               onSearchSubquestion={handleSearchSubquestion}
               searchingSubquestion={searchingSubquestion}
               activeSubquestion={activeSubquestion}
@@ -427,6 +469,9 @@ export const Phase2View = () => {
               onGenerateDocumentation={handleGenerateDocumentation}
               showDerivation={derivationReady}
               showSubquestions={subquestionReady}
+              showDocumentation={searchPerformed}
+              canGenerateDocumentation={searchPerformed}
+              documentationSummary={documentationSummary}
             />
           ) : null}
 
@@ -434,16 +479,6 @@ export const Phase2View = () => {
             <div className="border-4 border-dashed border-accent-success bg-neutral-900 text-text-main text-center py-20 px-8 shadow-brutal">
               <p className="text-3xl font-black uppercase">Sin resultados</p>
               <p className="font-mono mt-2">Ajusta tus fuentes o refina la pregunta para obtener nuevos hallazgos.</p>
-            </div>
-          ) : null}
-
-          {!searchPerformed ? (
-            <div className="border-4 border-black bg-neutral-100 shadow-brutal p-10 text-center space-y-4">
-              <p className="text-3xl font-black uppercase text-main">Genera la estrategia y ejecuta cada subpregunta</p>
-              <p className="font-mono text-main max-w-2xl mx-auto">
-                Selecciona tus bases, genera la estrategia y luego usa el botón “Buscar papers” dentro de cada subpregunta para ver
-                resultados específicos.
-              </p>
             </div>
           ) : null}
 

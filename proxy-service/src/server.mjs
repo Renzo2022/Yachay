@@ -264,20 +264,20 @@ app.post("/groq/search-strategy", async (req, res) => {
 
   if (normalizedStep === "derivation") {
     systemContent +=
-      " Devuelve solo {question, keywordMatrix}. keywordMatrix debe incluir exactamente las 4 entradas PICO con campos {component, concept, terms[]} y al menos 4 términos por componente. Todo en inglés.";
+      " Devuelve solo {question, keywordMatrix}. question DEBE estar redactada en español. keywordMatrix debe incluir exactamente las 4 entradas PICO con campos {component, concept, terms[]} y al menos 4 términos por componente. Los términos deben mantenerse en inglés para maximizar la compatibilidad con las bases.";
     userContent = `Tema: "${topic}"
 Fuentes seleccionadas: ${sourcesList}
 Protocolo Fase 1:
 ${JSON.stringify(phase1, null, 2)}
 
 Objetivo del paso 1:
-1. Redacta question alineada a la pregunta principal de la fase 1 (puedes reformularla en inglés si es necesario).
+1. Redacta question alineada a la pregunta principal de la fase 1, siempre en español (puedes reformularla).
 2. Construye keywordMatrix derivando términos SINÓNIMOS y controlados para cada componente PICO (P, I, C, O) usando solo inglés.
 3. Evita generar subpreguntas, keywords adicionales o recomendaciones en este paso.`;
   } else if (normalizedStep === "subquestions") {
     const matrixReference = Array.isArray(keywordMatrix) ? JSON.stringify(keywordMatrix, null, 2) : "[]";
     systemContent +=
-      " Devuelve solo {question, subquestionStrategies, recommendations}. Genera EXACTAMENTE 5 subquestionStrategies, cada una con keywords en inglés y databaseStrategies específicos para PubMed, Semantic Scholar, CrossRef y Europe PMC (operadores booleanos, filtros claros y estimación de resultados). recommendations debe ser una lista accionable en inglés.";
+      " Devuelve solo {question, subquestionStrategies, recommendations}. question y cada subpregunta deben estar redactadas en español. Para cada subpregunta genera keywords en inglés y databaseStrategies específicos para PubMed, Semantic Scholar, CrossRef y Europe PMC con el formato {database, query}. No incluyas filtros ni campos adicionales en databaseStrategies. recommendations debe ser una lista accionable en español.";
     userContent = `Tema: "${topic}"
 Fuentes seleccionadas: ${sourcesList}
 Derivación confirmada (keywordMatrix):
@@ -286,13 +286,13 @@ Protocolo Fase 1:
 ${JSON.stringify(phase1, null, 2)}
 
 Objetivo del paso 2:
-1. Con base en la derivación anterior, genera EXACTAMENTE 5 subpreguntas estratégicas en inglés.
-2. Para cada subpregunta define al menos 3 keywords en inglés y construye databaseStrategies con cadenas específicas para cada fuente (PubMed, Semantic Scholar, CrossRef, Europe PMC), aplicando filtros de idioma, tipo de documento y ventana temporal coherente.
-3. Incluye recomendaciones finales en inglés sobre cómo ajustar o refinar la búsqueda.
+1. Con base en la derivación anterior, genera EXACTAMENTE 5 subpreguntas estratégicas en español.
+2. Para cada subpregunta define al menos 3 keywords en inglés y construye databaseStrategies con cadenas específicas para cada fuente (PubMed, Semantic Scholar, CrossRef, Europe PMC) en el formato {database, query}. No generes filtros ni estimaciones; enfócate únicamente en la cadena de búsqueda.
+3. Incluye recomendaciones finales en español sobre cómo ajustar o refinar la búsqueda.
 4. No repitas keywordMatrix en este paso.`;
   } else {
     systemContent +=
-      " Devuelve {question, keywordMatrix, subquestionStrategies, recommendations}. keywordMatrix debe traer objetos {component:'P'|'I'|'C'|'O', concept, terms[]} (mínimo 4 términos cada uno) y TODOS los términos deben estar en inglés. subquestionStrategies debe contener EXACTAMENTE 5 elementos, cada uno con {subquestion, keywords[], databaseStrategies[]}. Cada databaseStrategies[] interno incluye objetos {database, query, filters, estimatedResults} para las cuatro bases mencionadas, personalizadas a esa subpregunta y escritas en inglés. recommendations es un arreglo de strings accionables en inglés.";
+      " Devuelve {question, keywordMatrix, subquestionStrategies, recommendations}. question y subquestionStrategies deben estar en español. keywordMatrix debe traer objetos {component:'P'|'I'|'C'|'O', concept, terms[]} (mínimo 4 términos cada uno) y TODOS los términos deben estar en inglés. subquestionStrategies debe contener EXACTAMENTE 5 elementos, cada uno con {subquestion, keywords[], databaseStrategies[]}. Cada databaseStrategies[] interno incluye objetos {database, query} para las cuatro bases mencionadas, personalizadas a esa subpregunta. recommendations es un arreglo de strings accionables en español.";
     userContent = `Tema: "${topic}"
 Fuentes seleccionadas: ${sourcesList}
 Protocolo Fase 1:
@@ -301,8 +301,8 @@ ${JSON.stringify(phase1, null, 2)}
 Instrucciones:
 1. Define question con la pregunta principal resultante (o reformulada si falta).
 2. keywordMatrix debe integrar términos y sinónimos derivados de cada componente PICO y de las subpreguntas.
-3. Genera exactamente 5 subpreguntas derivadas. Para cada subpregunta construye subquestionStrategies[i] con: subquestion, keywords específicos (al menos 3) y databaseStrategies con operadores booleanos, truncamientos y filtros claros (fechas, idioma, tipo de documento) para PubMed, Semantic Scholar, CrossRef y Europe PMC. Incluye un estimado textual de resultados esperados (ej. "40-60 registros").
-4. recommendations debe justificar la cobertura semántica, comparación explícita, refinamientos sugeridos y consideraciones de reproducibilidad, todo EN INGLÉS.
+3. Genera exactamente 5 subpreguntas derivadas en español. Para cada subpregunta construye subquestionStrategies[i] con: subquestion (en español), keywords específicos (al menos 3 en inglés) y databaseStrategies con objetos {database, query} para PubMed, Semantic Scholar, CrossRef y Europe PMC. No incluyas filtros ni estimaciones.
+4. recommendations debe justificar la cobertura semántica, comparación explícita, refinamientos sugeridos y consideraciones de reproducibilidad, todo EN ESPAÑOL.
 5. Asegúrate de que los campos "terms", "keywords" y cada "query" estén totalmente en inglés para maximizar la compatibilidad con las bases.`;
   }
 

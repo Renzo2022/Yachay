@@ -13,6 +13,7 @@ export interface Phase2Data {
   lastSearchSubquestion?: string | null
   lastSearchResultCount?: number | null
   documentationGeneratedAt?: number | null
+  documentationSummary?: string | null
 }
 
 export interface Project {

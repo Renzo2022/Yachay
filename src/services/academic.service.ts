@@ -253,26 +253,26 @@ const buildDatabaseStrategies = (keywords: string[]): DatabaseStrategy[] => [
   {
     database: 'PubMed',
     query: `(${keywords.join(' OR ')}) AND ("large language model" OR GPT OR BERT)`,
-    filters: 'Últimos 5 años · Estudios revisados por pares · Idioma: inglés',
-    estimatedResults: '40-60 registros',
+    filters: '',
+    estimatedResults: '',
   },
   {
     database: 'Semantic Scholar',
     query: `(${keywords.join(' OR ')}) AND ("transformer model" OR "semantic analysis")`,
-    filters: 'Computer Science · Education · Fecha ≥ 2020',
-    estimatedResults: '55-80 registros',
+    filters: '',
+    estimatedResults: '',
   },
   {
     database: 'CrossRef',
     query: `title:(${keywords[0] ?? ''}) AND abstract:("deep contextual embedding" OR "evaluation metrics")`,
-    filters: 'Article OR Proceeding · DOI obligatorio',
-    estimatedResults: '70-100 registros',
+    filters: '',
+    estimatedResults: '',
   },
   {
     database: 'Europe PMC',
     query: `(${keywords.join(' OR ')}) AND ("evaluation metrics" OR accuracy OR validity)`,
-    filters: 'Open Access · 2020-2025',
-    estimatedResults: '25-45 registros',
+    filters: '',
+    estimatedResults: '',
   },
 ]
 
@@ -318,6 +318,35 @@ type GeneratePhase2StrategyOptions = {
   keywordMatrix?: KeywordDerivation[]
 }
 
+const normalizeDatabaseStrategies = (strategies?: unknown[]): DatabaseStrategy[] => {
+  if (!Array.isArray(strategies)) return []
+  return strategies
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') {
+        return {
+          database: 'Database',
+          query: '',
+          filters: '',
+          estimatedResults: '',
+        }
+      }
+      const cast = entry as Partial<DatabaseStrategy>
+      return {
+        database: typeof cast.database === 'string' && cast.database.trim().length > 0 ? cast.database.trim() : 'Database',
+        query: typeof cast.query === 'string' ? cast.query : '',
+        filters: typeof cast.filters === 'string' ? cast.filters : '',
+        estimatedResults: typeof cast.estimatedResults === 'string' ? cast.estimatedResults : '',
+      }
+    })
+    .filter(
+      (entry) =>
+        entry.query.trim().length > 0 ||
+        entry.filters.trim().length > 0 ||
+        entry.estimatedResults.trim().length > 0 ||
+        entry.database !== 'Database',
+    )
+}
+
 const sanitizeStrategyResponse = (input: Partial<Phase2Strategy> | null | undefined): Phase2Strategy => {
   if (!input) {
     return {
@@ -353,18 +382,16 @@ const sanitizeStrategyResponse = (input: Partial<Phase2Strategy> | null | undefi
         }))
       : [],
     subquestionStrategies: Array.isArray(input.subquestionStrategies)
-      ? input.subquestionStrategies.map((block) => ({
-          subquestion: block?.subquestion ?? '',
-          keywords: sanitizeKeywords(block?.keywords),
-          databaseStrategies: Array.isArray(block?.databaseStrategies)
-            ? block.databaseStrategies.map((strategy) => ({
-                database: strategy?.database ?? 'Database',
-                query: strategy?.query ?? '',
-                filters: strategy?.filters ?? '',
-                estimatedResults: strategy?.estimatedResults ?? '',
-              }))
-            : [],
-        }))
+      ? input.subquestionStrategies.map((block) => {
+          const keywords = sanitizeKeywords(block?.keywords)
+          const normalizedStrategies = normalizeDatabaseStrategies(block?.databaseStrategies)
+          const ensuredStrategies = normalizedStrategies.length > 0 ? normalizedStrategies : buildDatabaseStrategies(keywords)
+          return {
+            subquestion: block?.subquestion ?? '',
+            keywords,
+            databaseStrategies: ensuredStrategies,
+          }
+        })
       : [],
     recommendations: sanitizeKeywords(input.recommendations as unknown[]),
   }

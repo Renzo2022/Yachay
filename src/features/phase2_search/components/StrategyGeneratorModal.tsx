@@ -6,8 +6,6 @@ type StrategySummaryProps = {
   subquestions?: Phase2Strategy['subquestionStrategies']
   onRemoveSubquestion?: (subquestion: string) => void
   disableRemoval?: boolean
-  yearFilters?: { from: number; to: number }
-  onYearFiltersChange?: (filters: { from: number; to: number }) => void
   onSearchSubquestion?: (subquestion: Phase2Strategy['subquestionStrategies'][number]) => void
   searchingSubquestion?: string | null
   activeSubquestion?: string | null
@@ -16,6 +14,8 @@ type StrategySummaryProps = {
   showDerivation?: boolean
   showSubquestions?: boolean
   showDocumentation?: boolean
+  canGenerateDocumentation?: boolean
+  documentationSummary?: string | null
 }
 
 const COMPONENT_STYLES: Record<
@@ -28,17 +28,11 @@ const COMPONENT_STYLES: Record<
   O: { label: 'O · Resultados', color: 'text-[#9333ea]', conceptColor: 'text-[#af50ea]' },
 }
 
-const DEFAULT_FILTERS = 'Idioma: inglés · Tipo: artículos de investigación'
-const DEFAULT_YEAR_FILTERS = { from: 2010, to: 2022 }
-const FIXED_FILTERS_SUMMARY = 'Idioma: inglés · Tipo: artículos de revista y conferencias revisadas por pares'
-
 export const StrategySummary = ({
   strategy,
   subquestions,
   onRemoveSubquestion,
   disableRemoval = false,
-  yearFilters,
-  onYearFiltersChange,
   onSearchSubquestion,
   searchingSubquestion,
   activeSubquestion,
@@ -47,20 +41,12 @@ export const StrategySummary = ({
   showDerivation = true,
   showSubquestions = true,
   showDocumentation = true,
+  canGenerateDocumentation = false,
+  documentationSummary = null,
 }: StrategySummaryProps) => {
   const keywordMatrix = strategy.keywordMatrix ?? []
   const recommendations = strategy.recommendations ?? []
   const displayedSubquestions = subquestions ?? strategy.subquestionStrategies ?? []
-  const appliedYearFilters = yearFilters ?? DEFAULT_YEAR_FILTERS
-
-  const handleYearInput = (field: 'from' | 'to', value: string) => {
-    if (!onYearFiltersChange) return
-    const numeric = Number(value)
-    if (Number.isNaN(numeric)) return
-    const next = { ...appliedYearFilters, [field]: numeric }
-    if (next.from > next.to) return
-    onYearFiltersChange(next)
-  }
 
   return (
     <section className="border-4 border-black bg-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] rounded-none p-6 space-y-8 text-black">
@@ -115,35 +101,6 @@ export const StrategySummary = ({
               PubMed · Semantic Scholar · CrossRef · Europe PMC
             </span>
           </div>
-          <div className="border-3 border-black bg-neutral-50 px-4 py-3 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] space-y-2">
-            <p className="text-xs font-mono uppercase tracking-[0.3em] text-black">Filtros globales</p>
-            <p className="text-sm font-mono text-black">{FIXED_FILTERS_SUMMARY}</p>
-            <div className="flex flex-wrap gap-3 text-sm font-mono text-black">
-              <label className="flex items-center gap-2">
-                Desde:
-                <input
-                  type="number"
-                  min={1900}
-                  max={appliedYearFilters.to}
-                  value={appliedYearFilters.from}
-                  onChange={(event) => handleYearInput('from', event.target.value)}
-                  className="w-20 border-2 border-black bg-white px-2 py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                />
-              </label>
-              <label className="flex items-center gap-2">
-                Hasta:
-                <input
-                  type="number"
-                  min={appliedYearFilters.from}
-                  max={new Date().getFullYear()}
-                  value={appliedYearFilters.to}
-                  onChange={(event) => handleYearInput('to', event.target.value)}
-                  className="w-20 border-2 border-black bg-white px-2 py-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                />
-              </label>
-            </div>
-          </div>
-
           <div className="space-y-4 text-black">
             {displayedSubquestions.length === 0 ? (
               <article className="border-3 border-dashed border-black p-4 bg-neutral-50">
@@ -217,35 +174,18 @@ export const StrategySummary = ({
                       <tr>
                         <th className="border-b-3 border-black px-3 py-2">Base</th>
                         <th className="border-b-3 border-black px-3 py-2">Cadena de búsqueda</th>
-                        <th className="border-b-3 border-black px-3 py-2">Filtros sugeridos</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(block?.databaseStrategies ?? []).map((entry, dbIndex) => {
                         const database = entry?.database ?? 'Base sin nombre'
                         const query = entry?.query ?? 'Cadena no disponible'
-                        const filtersValue = entry?.filters as unknown
-                        let rawFilters: string
-                        if (Array.isArray(filtersValue)) {
-                          rawFilters = filtersValue.join(' · ')
-                        } else if (typeof filtersValue === 'string') {
-                          rawFilters = filtersValue
-                        } else {
-                          rawFilters = DEFAULT_FILTERS
-                        }
-                        const normalizedFilters = rawFilters
-                          .split('·')
-                          .map((chunk: string) => chunk.trim())
-                          .filter((chunk: string) => chunk.length > 0 && !/^fecha/i.test(chunk))
-                          .join(' · ')
-                        const displayFilters = normalizedFilters || DEFAULT_FILTERS
                         return (
                           <tr key={`${block?.subquestion ?? 'sub'}-${database}-${dbIndex}`} className="odd:bg-neutral-50">
                             <td className="border-b-3 border-black px-3 py-2 font-bold">{database}</td>
                             <td className="border-b-3 border-black px-3 py-2">
                               <code className="block whitespace-pre-wrap">{query}</code>
                             </td>
-                            <td className="border-b-3 border-black px-3 py-2">{displayFilters}</td>
                           </tr>
                         )
                       })}
@@ -260,22 +200,37 @@ export const StrategySummary = ({
 
       {showDocumentation ? (
         <div className="space-y-3">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h4 className="text-2xl font-black uppercase text-black">3. Documentación de la estrategia</h4>
-              <ul className="list-disc list-inside font-mono text-sm text-black space-y-2">
-                {recommendations.map((tip, index) => (
-                  <li key={`${tip}-${index}`}>{tip}</li>
-                ))}
-              </ul>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-3">
+              <div>
+                <h4 className="text-2xl font-black uppercase text-black">3. Documentación de la estrategia</h4>
+                {documentationSummary ? (
+                  <p className="font-mono text-sm text-black whitespace-pre-wrap">{documentationSummary}</p>
+                ) : (
+                  <p className="font-mono text-sm text-black">
+                    Ejecuta al menos una búsqueda y luego genera un registro en español con el botón lateral.
+                  </p>
+                )}
+              </div>
+              {recommendations.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-mono uppercase tracking-[0.3em] text-black">Recomendaciones automáticas (inglés)</p>
+                  <ul className="list-disc list-inside font-mono text-sm text-black space-y-1">
+                    {recommendations.map((tip, index) => (
+                      <li key={`${tip}-${index}`}>{tip}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </div>
             {onGenerateDocumentation ? (
               <BrutalButton
                 variant="primary"
                 className="self-start"
+                disabled={!canGenerateDocumentation}
                 onClick={onGenerateDocumentation}
               >
-                📄 Generar documentación
+                {documentationSummary ? '↻ Regenerar documentación' : '📄 Generar documentación'}
               </BrutalButton>
             ) : null}
           </div>
