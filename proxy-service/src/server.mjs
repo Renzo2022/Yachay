@@ -437,22 +437,29 @@ app.post("/cohere/classify", async (req, res) => {
 
       const contentParts = response?.message?.content ?? [];
       const jsonPart = contentParts.find((part) => part?.json);
+      const textBlob = contentParts.map((part) => part?.text ?? "").join("\n").trim();
 
-      let parsed = null;
-      if (jsonPart?.json) {
-        if (Array.isArray(jsonPart.json)) {
-          parsed = jsonPart.json;
-        } else if (Array.isArray(jsonPart.json?.results)) {
-          parsed = jsonPart.json.results;
-        }
-      }
+      const coherePayload =
+        jsonPart?.json ??
+        (() => {
+          if (!textBlob) return null;
+          try {
+            return parseJsonSafe(textBlob);
+          } catch {
+            return extractJsonArray(textBlob);
+          }
+        })();
+
+      const parsed =
+        (Array.isArray(coherePayload) && coherePayload) ||
+        (Array.isArray(coherePayload?.results) && coherePayload.results) ||
+        (Array.isArray(coherePayload?.output) && coherePayload.output) ||
+        (Array.isArray(coherePayload?.data) && coherePayload.data) ||
+        (Array.isArray(coherePayload?.items) && coherePayload.items) ||
+        null;
 
       if (!parsed) {
-        const fallbackText = contentParts.map((part) => part?.text ?? "").join("\n").trim();
-        parsed = extractJsonArray(fallbackText);
-      }
-
-      if (!Array.isArray(parsed)) {
+        console.error("Cohere payload sin array interpretable", JSON.stringify(coherePayload, null, 2));
         throw new Error("Cohere devolvió un formato inesperado.");
       }
 
