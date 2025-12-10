@@ -1,5 +1,7 @@
 import type { Phase1Data } from '../features/phase1_planning/types.ts'
-import type { DatabaseStrategy, ExternalPaper, ExternalSource, KeywordDerivation, Phase2Strategy } from '../features/phase2_search/types.ts'
+import type { ExternalPaper, ExternalSource, KeywordDerivation, Phase2Strategy, DatabaseStrategy } from '../features/phase2_search/types.ts'
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const mockPapers: ExternalPaper[] = [
   {
@@ -52,8 +54,6 @@ const mockPapers: ExternalPaper[] = [
     isOpenAccess: false,
   },
 ]
-
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const PROXY_BASE_URL = import.meta.env.VITE_PROXY_BASE_URL?.replace(/\/$/, '') ?? ''
 const hasProxy = Boolean(PROXY_BASE_URL)
@@ -304,32 +304,86 @@ const SAMPLE_KEYWORD_MATRIX: KeywordDerivation[] = [
   },
 ]
 
-const buildDatabaseStrategies = (keywords: string[]): DatabaseStrategy[] => [
-  {
-    database: 'PubMed',
-    query: `(${keywords.join(' OR ')}) AND ("large language model" OR GPT OR BERT)`,
-    filters: '',
-    estimatedResults: '',
-  },
-  {
-    database: 'Semantic Scholar',
-    query: `(${keywords.join(' OR ')}) AND ("transformer model" OR "semantic analysis")`,
-    filters: '',
-    estimatedResults: '',
-  },
-  {
-    database: 'CrossRef',
-    query: `title:(${keywords[0] ?? ''}) AND abstract:("deep contextual embedding" OR "evaluation metrics")`,
-    filters: '',
-    estimatedResults: '',
-  },
-  {
-    database: 'Europe PMC',
-    query: `(${keywords.join(' OR ')}) AND ("evaluation metrics" OR accuracy OR validity)`,
-    filters: '',
-    estimatedResults: '',
-  },
-]
+const SOURCE_DISPLAY_NAMES: Record<ExternalSource, string> = {
+  pubmed: 'PubMed',
+  semantic_scholar: 'Semantic Scholar',
+  crossref: 'CrossRef',
+  europe_pmc: 'Europe PMC',
+}
+
+const DEFAULT_SOURCE_ORDER: ExternalSource[] = ['pubmed', 'semantic_scholar', 'crossref', 'europe_pmc']
+
+const buildStrategyForSource = (source: ExternalSource, keywords: string[]): DatabaseStrategy => {
+  switch (source) {
+    case 'pubmed':
+      return {
+        database: SOURCE_DISPLAY_NAMES.pubmed,
+        query: `(${keywords.join(' OR ')}) AND ("large language model" OR GPT OR BERT)`,
+        filters: '',
+        estimatedResults: '',
+      }
+    case 'semantic_scholar':
+      return {
+        database: SOURCE_DISPLAY_NAMES.semantic_scholar,
+        query: `(${keywords.join(' OR ')}) AND ("transformer model" OR "semantic analysis")`,
+        filters: '',
+        estimatedResults: '',
+      }
+    case 'crossref':
+      return {
+        database: SOURCE_DISPLAY_NAMES.crossref,
+        query: `title:(${keywords[0] ?? ''}) AND abstract:("deep contextual embedding" OR "evaluation metrics")`,
+        filters: '',
+        estimatedResults: '',
+      }
+    case 'europe_pmc':
+    default:
+      return {
+        database: SOURCE_DISPLAY_NAMES.europe_pmc,
+        query: `(${keywords.join(' OR ')}) AND ("evaluation metrics" OR accuracy OR validity)`,
+        filters: '',
+        estimatedResults: '',
+      }
+  }
+}
+
+const buildDatabaseStrategies = (keywords: string[], sources?: ExternalSource[]): DatabaseStrategy[] => {
+  const targetSources = sources?.length ? sources : DEFAULT_SOURCE_ORDER
+  return targetSources.map((source) => buildStrategyForSource(source, keywords))
+}
+
+const normalizeDatabaseName = (name: string) => name.trim().toLowerCase()
+
+const ensureStrategiesForSources = (
+  strategies: DatabaseStrategy[],
+  keywords: string[],
+  sources?: ExternalSource[],
+): DatabaseStrategy[] => {
+  if (!sources?.length) {
+    return strategies
+  }
+  const allowedNames = sources.map((source) => normalizeDatabaseName(SOURCE_DISPLAY_NAMES[source]))
+  const seen = new Set<string>()
+  const filtered: DatabaseStrategy[] = []
+
+  strategies.forEach((entry) => {
+    const normalizedName = normalizeDatabaseName(entry.database ?? '')
+    if (allowedNames.includes(normalizedName) && !seen.has(normalizedName)) {
+      filtered.push(entry)
+      seen.add(normalizedName)
+    }
+  })
+
+  sources.forEach((source) => {
+    const normalizedName = normalizeDatabaseName(SOURCE_DISPLAY_NAMES[source])
+    if (!seen.has(normalizedName)) {
+      filtered.push(buildStrategyForSource(source, keywords))
+      seen.add(normalizedName)
+    }
+  })
+
+  return filtered
+}
 
 const SAMPLE_STRATEGY: Phase2Strategy = {
   question: '¿Cómo impactan los modelos de lenguaje grandes en la evaluación automática de la argumentación?',
@@ -402,7 +456,7 @@ const normalizeDatabaseStrategies = (strategies?: unknown[]): DatabaseStrategy[]
     )
 }
 
-const sanitizeStrategyResponse = (input: Partial<Phase2Strategy> | null | undefined): Phase2Strategy => {
+const sanitizeStrategyResponse = (input: Partial<Phase2Strategy> | null | undefined, sources?: ExternalSource[]): Phase2Strategy => {
   if (!input) {
     return {
       question: '',
@@ -440,7 +494,10 @@ const sanitizeStrategyResponse = (input: Partial<Phase2Strategy> | null | undefi
       ? input.subquestionStrategies.map((block) => {
           const keywords = sanitizeKeywords(block?.keywords)
           const normalizedStrategies = normalizeDatabaseStrategies(block?.databaseStrategies)
-          const ensuredStrategies = normalizedStrategies.length > 0 ? normalizedStrategies : buildDatabaseStrategies(keywords)
+          const ensuredStrategies =
+            normalizedStrategies.length > 0
+              ? ensureStrategiesForSources(normalizedStrategies, keywords, sources)
+              : buildDatabaseStrategies(keywords, sources)
           return {
             subquestion: block?.subquestion ?? '',
             keywords,
@@ -484,7 +541,7 @@ export const generatePhase2Strategy = async (
 
   if (!hasProxy) {
     await delay(800)
-    return filterStrategyByStep(sanitizeStrategyResponse(SAMPLE_STRATEGY), normalizedStep)
+    return filterStrategyByStep(sanitizeStrategyResponse(SAMPLE_STRATEGY, sources), normalizedStep)
   }
 
   try {
@@ -500,10 +557,12 @@ export const generatePhase2Strategy = async (
     }
 
     const response = await proxyPost<Partial<Phase2Strategy>>('/groq/search-strategy', payload)
-    return filterStrategyByStep(sanitizeStrategyResponse(response), normalizedStep)
+    const sanitized = sanitizeStrategyResponse(response, sources)
+    return filterStrategyByStep(sanitized, normalizedStep)
   } catch (error) {
     console.error('generatePhase2Strategy error', error)
-    return filterStrategyByStep(sanitizeStrategyResponse(SAMPLE_STRATEGY), normalizedStep)
+    const fallback = sanitizeStrategyResponse(SAMPLE_STRATEGY, sources)
+    return filterStrategyByStep(fallback, normalizedStep)
   }
 }
 

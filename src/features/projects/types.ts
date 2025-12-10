@@ -59,6 +59,7 @@ export interface Candidate extends ExternalPaper {
   decision?: ScreeningDecision
   confidence?: ScreeningConfidence
   reason?: string
+  aiSubtopic?: string
   userConfirmed?: boolean
   processedAt?: number
   savedAt: number
@@ -67,6 +68,7 @@ export interface Candidate extends ExternalPaper {
   qualityScore?: number
   extractionStatus?: 'pending' | 'extracted' | 'verified'
   extractionId?: string
+  dedupKey: string
 }
 
 export interface PrismaData {
@@ -91,7 +93,7 @@ export const createProjectDefaults = (overrides?: Partial<Project>): Project => 
   phase2: overrides?.phase2 ?? { lastStrategy: null, hiddenSubquestions: [] },
 })
 
-export const createCandidateFromExternal = (projectId: string, paper: ExternalPaper): Candidate => ({
+export const createCandidateFromExternal = (projectId: string, paper: ExternalPaper, dedupKey: string): Candidate => ({
   ...paper,
   projectId,
   screeningStatus: 'pending',
@@ -101,6 +103,7 @@ export const createCandidateFromExternal = (projectId: string, paper: ExternalPa
   userConfirmed: false,
   processedAt: undefined,
   savedAt: Date.now(),
+  dedupKey,
 })
 
 export const createPrismaData = (overrides?: Partial<PrismaData>): PrismaData => ({

@@ -31,8 +31,8 @@ export const VisualizationsPanel = ({ stats, studies, filteredStudies, onYearFil
             Selección actual: {selectedYear ?? 'Todas'} ({filteredStudies.length}/{studies.length})
           </div>
         </header>
-        <div className="h-64">
-          <ResponsiveContainer>
+        <div className="h-64 min-w-0">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <BarChart data={stats.byYear} margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid stroke="#111" strokeDasharray="3 3" />
               <XAxis dataKey="name" stroke="#111" />
@@ -44,13 +44,13 @@ export const VisualizationsPanel = ({ stats, studies, filteredStudies, onYearFil
       </section>
 
       <section className="grid lg:grid-cols-2 gap-6">
-        <div className="border-4 border-black bg-white shadow-[10px_10px_0_0_#111] p-6">
+        <div className="border-4 border-black bg-white shadow-[10px_10px_0_0_#111] p-6 min-w-0">
           <header className="mb-4">
             <p className="text-xs font-mono uppercase tracking-[0.3em] text-[#F97316]">Distribución geográfica</p>
             <h3 className="text-2xl font-black">Países</h3>
           </header>
-          <div className="h-60">
-            <ResponsiveContainer>
+          <div className="h-60 min-w-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <PieChart>
                 <Pie data={stats.byCountry} dataKey="value" nameKey="name" innerRadius={40} outerRadius={80} stroke="#111" strokeWidth={2}>
                   {stats.byCountry.map((entry, index) => (

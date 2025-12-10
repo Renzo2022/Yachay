@@ -37,6 +37,11 @@ export const ScreeningCard = ({ candidate, onConfirm, processing }: ScreeningCar
         </p>
         <h3 className="text-2xl font-black uppercase text-main">{candidate.title}</h3>
         <p className="text-sm text-neutral-900 font-mono">{candidate.authors.join(', ')}</p>
+        {candidate.abstract ? (
+          <p className="mt-3 text-sm text-neutral-700 bg-neutral-100 border-3 border-black p-3 font-mono leading-snug">
+            {candidate.abstract}
+          </p>
+        ) : null}
       </div>
 
       {candidate.reason ? (

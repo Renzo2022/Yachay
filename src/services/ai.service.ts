@@ -87,6 +87,37 @@ export const screenPaper = async (paper: Candidate, criteria: Phase1Data): Promi
   }
 }
 
+const normalizeDecision = (label: string): NonNullable<Candidate['decision']> => {
+  const value = label.toLowerCase()
+  if (value.includes('inclu')) return 'include'
+  if (value.includes('exclu')) return 'exclude'
+  return 'uncertain'
+}
+
+export const classifyCandidatesWithGemini = async (
+  candidates: Candidate[],
+  criteria: Phase1Data,
+): Promise<Array<{ id: string; decision: NonNullable<Candidate['decision']>; justification: string; subtopic?: string }>> => {
+  if (!candidates.length) {
+    return []
+  }
+
+  const response = await proxyPost<{ results: Array<{ id: string; decision: string; justification: string; subtopic?: string }> }>(
+    '/gemini/classify',
+    {
+      criteria,
+      articles: candidates.map(({ id, title, abstract }) => ({ id, title, abstract })),
+    },
+  )
+
+  return response.results.map((entry) => ({
+    id: entry.id,
+    decision: normalizeDecision(entry.decision),
+    justification: entry.justification,
+    subtopic: entry.subtopic,
+  }))
+}
+
 const PICO_TEMPLATE: GeneratedProtocolPayload['protocol']['pico'] = {
   population: 'Docentes de educación superior en Latinoamérica',
   intervention: 'Implementación de plataformas basadas en IA para evaluación automática',

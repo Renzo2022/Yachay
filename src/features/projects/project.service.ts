@@ -27,6 +27,8 @@ import type { QualityAssessment } from '../phase4_quality/types.ts'
 import type { Phase1Data } from '../phase1_planning/types.ts'
 import type { ExternalPaper } from '../phase2_search/types.ts'
 
+export const MISSING_ABSTRACT_PLACEHOLDER = 'Resumen no disponible para este registro.'
+
 const projectsCollection = collection(firestore, 'projects')
 
 const mapProjectDoc = (snapshot: QueryDocumentSnapshot<DocumentData>) => snapshot.data() as Project
@@ -46,6 +48,8 @@ export const createProject = async (userId: string, data: Partial<Project>) => {
   if (payload.templateUsed === undefined) {
     delete payload.templateUsed
   }
+
+const MISSING_ABSTRACT_PLACEHOLDER = 'Resumen no disponible para este registro.'
 
   await setDoc(projectDoc, payload)
   return project
@@ -121,16 +125,130 @@ const sanitizeFirestoreData = <T>(payload: T): T => {
   return cleanEntry as T
 }
 
-export const saveProjectCandidates = async (projectId: string, papers: ExternalPaper[]) => {
+const normalizeForKey = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/gi, '')
+    .toLowerCase()
+
+const buildDedupKey = (paper: Pick<ExternalPaper, 'id' | 'doi' | 'title' | 'authors' | 'year'>): string => {
+  if (paper.doi) {
+    return `doi:${paper.doi.trim().toLowerCase()}`
+  }
+  const normalizedTitle = normalizeForKey(paper.title ?? paper.id)
+  const primaryAuthor = normalizeForKey(paper.authors?.[0] ?? 'unknown')
+  const yearFragment = paper.year ? String(paper.year) : 'na'
+  return `title:${normalizedTitle}|author:${primaryAuthor}|year:${yearFragment}`
+}
+
+const ensurePrismaCounters = async (
+  projectId: string,
+  { identifiedDelta = 0, duplicatesDelta = 0 }: { identifiedDelta?: number; duplicatesDelta?: number },
+) => {
+  if (!identifiedDelta && !duplicatesDelta) return
+  const prismaRef = getPrismaDocRef(projectId)
+  const snapshot = await getDoc(prismaRef)
+  const current = snapshot.exists() ? (snapshot.data() as PrismaData) : createPrismaData()
+  const nextPayload: Partial<PrismaData> = {}
+  if (identifiedDelta) {
+    nextPayload.identified = (current.identified ?? 0) + identifiedDelta
+  }
+  if (duplicatesDelta) {
+    nextPayload.duplicates = (current.duplicates ?? 0) + duplicatesDelta
+  }
+  await setDoc(prismaRef, nextPayload, { merge: true })
+}
+
+const syncPrismaAfterDecision = async (
+  projectId: string,
+  prevDecision: Candidate['decision'] | undefined,
+  prevConfirmed: boolean,
+  nextDecision: Candidate['decision'],
+) => {
+  const updates: Partial<PrismaData> = {}
+  if (!prevConfirmed) {
+    const snapshot = await getDoc(getPrismaDocRef(projectId))
+    const current = snapshot.exists() ? (snapshot.data() as PrismaData) : createPrismaData()
+    updates.screened = (current.screened ?? 0) + 1
+    if (nextDecision === 'include') {
+      updates.included = (current.included ?? 0) + 1
+    }
+    await setDoc(getPrismaDocRef(projectId), updates, { merge: true })
+    return
+  }
+
+  if (prevDecision === nextDecision) {
+    return
+  }
+
+  const snapshot = await getDoc(getPrismaDocRef(projectId))
+  const current = snapshot.exists() ? (snapshot.data() as PrismaData) : createPrismaData()
+  if (prevDecision === 'include' && nextDecision !== 'include') {
+    updates.included = Math.max((current.included ?? 0) - 1, 0)
+  } else if (prevDecision !== 'include' && nextDecision === 'include') {
+    updates.included = (current.included ?? 0) + 1
+  }
+  if (Object.keys(updates).length > 0) {
+    await setDoc(getPrismaDocRef(projectId), updates, { merge: true })
+  }
+}
+
+export const saveProjectCandidates = async (
+  projectId: string,
+  papers: ExternalPaper[],
+): Promise<{ saved: number; duplicates: number; withoutAbstract: number }> => {
+  if (papers.length === 0) {
+    return { saved: 0, duplicates: 0, withoutAbstract: 0 }
+  }
+
   const candidatesCollection = getCandidatesCollection(projectId)
+  const snapshot = await getDocs(candidatesCollection)
+  const existingKeys = new Set<string>()
+  const backfillPromises: Promise<void>[] = []
+
+  snapshot.docs.forEach((docSnapshot) => {
+    const data = docSnapshot.data() as Candidate
+    const computedKey = data.dedupKey ?? buildDedupKey(data)
+    existingKeys.add(computedKey)
+    if (!data.dedupKey) {
+      backfillPromises.push(setDoc(docSnapshot.ref, { dedupKey: computedKey }, { merge: true }))
+    }
+  })
+
+  const newCandidates: Candidate[] = []
+  const batchKeys = new Set<string>()
+  let duplicates = 0
+  let withoutAbstract = 0
+
+  papers.forEach((paper) => {
+    const abstractText = paper.abstract?.trim() ?? ''
+    if (abstractText.length === 0 || abstractText === MISSING_ABSTRACT_PLACEHOLDER) {
+      withoutAbstract += 1
+      return
+    }
+    const dedupKey = buildDedupKey(paper)
+    if (existingKeys.has(dedupKey) || batchKeys.has(dedupKey)) {
+      duplicates += 1
+      return
+    }
+    batchKeys.add(dedupKey)
+    const candidate = sanitizeFirestoreData(createCandidateFromExternal(projectId, paper, dedupKey))
+    newCandidates.push(candidate)
+  })
+
   await Promise.all(
-    papers.map((paper) => {
-      const candidate = sanitizeFirestoreData(createCandidateFromExternal(projectId, paper))
-      const docId = encodeURIComponent(candidate.id)
-      return setDoc(doc(candidatesCollection, docId), candidate, { merge: true })
-    }),
+    newCandidates.map((candidate) => setDoc(getCandidateDocRef(projectId, candidate.id), candidate, { merge: true })),
   )
+
+  if (backfillPromises.length) {
+    await Promise.all(backfillPromises)
+  }
+
   await updateDoc(getProjectDocRef(projectId), { updatedAt: Date.now() })
+  await ensurePrismaCounters(projectId, { identifiedDelta: papers.length, duplicatesDelta: duplicates })
+
+  return { saved: newCandidates.length, duplicates, withoutAbstract }
 }
 
 export const listenToCandidates = (projectId: string, callback: (candidates: Candidate[]) => void): Unsubscribe => {
@@ -148,23 +266,34 @@ export const updateCandidateRecord = async (
   candidateId: string,
   updates: Partial<Candidate>,
 ) => {
-  await setDoc(doc(getCandidatesCollection(projectId), candidateId), updates, { merge: true })
+  await setDoc(getCandidateDocRef(projectId, candidateId), updates, { merge: true })
 }
 
-export const confirmCandidateDecision = async (projectId: string, candidate: Candidate, decision: Candidate['decision']) => {
+export const confirmCandidateDecision = async (
+  projectId: string,
+  candidate: Candidate,
+  decision: Candidate['decision'],
+) => {
+  const wasConfirmed = Boolean(candidate.userConfirmed)
+  const previousDecision = candidate.decision
+
   await updateCandidateRecord(projectId, candidate.id, {
     decision,
     userConfirmed: true,
     screeningStatus: 'screened',
   })
 
+  await syncPrismaAfterDecision(projectId, previousDecision, wasConfirmed, decision)
+
   if (decision === 'include') {
-    await setDoc(doc(getIncludedCollection(projectId), candidate.id), {
+    await setDoc(getIncludedDocRef(projectId, candidate.id), {
       ...candidate,
       decision: 'include',
       confirmedAt: Date.now(),
       qualityStatus: 'pending',
     })
+  } else if (wasConfirmed && previousDecision === 'include') {
+    await deleteDoc(getIncludedDocRef(projectId, candidate.id))
   }
 }
 

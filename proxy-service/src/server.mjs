@@ -9,6 +9,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 const GROQ_MODEL = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "models/gemini-1.5-pro";
 
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
@@ -18,6 +19,13 @@ const ensureGroq = () => {
     throw new Error("Missing GROQ_API_KEY env var");
   }
   return new Groq({ apiKey: process.env.GROQ_API_KEY });
+};
+
+const ensureGoogleKey = () => {
+  if (!process.env.GOOGLE_API_KEY) {
+    throw new Error("Missing GOOGLE_API_KEY env var");
+  }
+  return process.env.GOOGLE_API_KEY;
 };
 
 const cleanJson = (content = "") =>
@@ -56,6 +64,78 @@ const extractErrorDetails = (error) => {
     return error.message;
   }
   return "Unknown Groq error";
+};
+
+const chunkArray = (items, size) => {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+};
+
+const normalizeDecision = (label = "") => {
+  const value = label.toLowerCase();
+  if (value.includes("inclu")) return "include";
+  if (value.includes("exclu")) return "exclude";
+  return "uncertain";
+};
+
+const extractJsonArray = (text = "") => {
+  if (!text) return null;
+  const fenced = text.match(/```json([\s\S]*?)```/i);
+  const raw = fenced ? fenced[1] : text;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    try {
+      return JSON.parse(jsonrepair(raw));
+    } catch {
+      return null;
+    }
+  }
+};
+
+const buildGeminiPrompt = (criteria = {}, articles = []) => {
+  const inclusion =
+    Array.isArray(criteria.inclusionCriteria) && criteria.inclusionCriteria.length
+      ? criteria.inclusionCriteria.map((entry) => `- ${entry}`).join("\n")
+      : "- Sin criterios proporcionados";
+  const exclusion =
+    Array.isArray(criteria.exclusionCriteria) && criteria.exclusionCriteria.length
+      ? criteria.exclusionCriteria.map((entry) => `- ${entry}`).join("\n")
+      : "- Sin criterios proporcionados";
+  const question = criteria.mainQuestion || "Pregunta no especificada";
+  const payload = articles.map((article) => ({
+    id: article.id,
+    titulo: article.title ?? "",
+    resumen: article.abstract ?? "",
+  }));
+
+  return `Eres un asistente experto en revisiones sistemáticas. Clasifica cada artículo según la pregunta y los criterios dados.
+
+Pregunta principal:
+${question}
+
+Criterios de inclusión:
+${inclusion}
+
+Criterios de exclusión:
+${exclusion}
+
+Debes responder EXCLUSIVAMENTE en JSON válido con este formato:
+[
+  {
+    "id": "ID_DEL_ARTICULO",
+    "classification": "INCLUIR|EXCLUIR|DUDA",
+    "justification": "Razón corta citando criterios",
+    "subtopic": "Subtema sugerido"
+  }
+]
+
+Artículos a clasificar:
+${JSON.stringify(payload, null, 2)}
+`;
 };
 
 app.get("/health", (_req, res) => {
@@ -330,6 +410,73 @@ Instrucciones:
     const details = extractErrorDetails(error);
     console.error("/groq/search-strategy", details);
     res.status(500).json({ error: "Groq search strategy failed", details });
+  }
+});
+
+app.post("/gemini/classify", async (req, res) => {
+  const { criteria, articles } = req.body ?? {};
+  if (!criteria || !Array.isArray(articles) || articles.length === 0) {
+    res.status(400).json({ error: "Missing criteria or articles" });
+    return;
+  }
+
+  try {
+    const apiKey = ensureGoogleKey();
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+    const batches = chunkArray(articles, 10);
+    const aggregated = [];
+
+    for (const batch of batches) {
+      const prompt = buildGeminiPrompt(criteria, batch);
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 2048,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Gemini API error (${response.status}): ${text}`);
+      }
+
+      const data = await response.json();
+      const text =
+        data?.candidates
+          ?.map((candidate) => candidate?.content?.parts?.map((part) => part?.text ?? "").join("\n"))
+          .filter(Boolean)
+          .join("\n") ?? "";
+      const parsed = extractJsonArray(text);
+      if (!Array.isArray(parsed)) {
+        throw new Error("Gemini devolvió un formato inesperado.");
+      }
+
+      parsed.forEach((entry) => {
+        const cast = entry ?? {};
+        if (!cast?.id || !cast?.classification) {
+          return;
+        }
+        aggregated.push({
+          id: cast.id,
+          decision: normalizeDecision(cast.classification),
+          justification: cast.justification || "Sin justificación proporcionada.",
+          subtopic: cast.subtopic,
+        });
+      });
+    }
+
+    res.json({ results: aggregated });
+  } catch (error) {
+    console.error("/gemini/classify", error);
+    res.status(500).json({
+      error: "Gemini classification failed",
+      details: error?.message ?? "Unknown Gemini error",
+    });
   }
 });
 

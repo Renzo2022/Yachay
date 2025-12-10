@@ -77,7 +77,7 @@ export const ProjectLayout = () => {
         </header>
 
         <div className="flex">
-          <aside className="w-72 border-r-4 border-white bg-neutral-100 text-main min-h-[calc(100vh-160px)] p-6 space-y-6 border-4 border-black shadow-[6px_0_0_0_rgba(0,0,0,1)]">
+          <aside className="w-72 border-r-4 border-white bg-neutral-100 text-main min-h-[calc(100vh-160px)] p-6 space-y-4 border-4 border-black shadow-[6px_0_0_0_rgba(0,0,0,1)]">
             <Link
               to="/dashboard"
               className="inline-flex items-center gap-2 border-3 border-black px-3 py-2 font-mono text-sm bg-white hover:-translate-y-1 hover:-translate-x-1 transition-transform"
@@ -113,16 +113,6 @@ export const ProjectLayout = () => {
               })}
             </nav>
 
-            {currentPhase === 'phase3' ? (
-              <div className="mt-6 border-3 border-black bg-white p-4 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] space-y-3">
-                <p className="text-xs font-mono uppercase tracking-[0.3em] text-black">Tareas de cribado</p>
-                <ul className="space-y-2 text-sm font-mono text-black">
-                  <li>• Eliminar duplicados</li>
-                  <li>• Cribado inicial (título/resumen)</li>
-                  <li>• Documentar exclusiones</li>
-                </ul>
-              </div>
-            ) : null}
           </aside>
 
           <main className="flex-1 p-8 bg-white">

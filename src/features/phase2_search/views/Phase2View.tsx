@@ -560,14 +560,22 @@ export const Phase2View = () => {
   const handleSaveCandidates = async () => {
     if (selectedPapers.length === 0 || !activeSubquestion) return
     setSaving(true)
-    await saveProjectCandidates(project.id, selectedPapers)
+    const { saved, duplicates, withoutAbstract } = await saveProjectCandidates(project.id, selectedPapers)
     confetti({
       particleCount: 100,
       spread: 70,
       origin: { y: 0.7 },
       colors: ['#00FF00', '#00FFFF', '#FFD300'],
     })
-    showStatus(`${selectedPapers.length} candidatos guardados`)
+    const statusParts = []
+    statusParts.push(`${saved} candidatos guardados`)
+    if (duplicates > 0) {
+      statusParts.push(`${duplicates} duplicados omitidos`)
+    }
+    if (withoutAbstract > 0) {
+      statusParts.push(`${withoutAbstract} registros sin resumen filtrados`)
+    }
+    showStatus(statusParts.join(' · '))
     setSelectedIds(new Set())
     setSaving(false)
 
