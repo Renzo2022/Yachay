@@ -97,6 +97,20 @@ const extractJsonArray = (text = "") => {
   }
 };
 
+const findFirstArray = (payload) => {
+  if (!payload) return null;
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (typeof payload === "object") {
+    for (const value of Object.values(payload)) {
+      const candidate = findFirstArray(value);
+      if (candidate) return candidate;
+    }
+  }
+  return null;
+};
+
 const buildClassificationPrompt = (criteria = {}, articles = []) => {
   const inclusion =
     Array.isArray(criteria.inclusionCriteria) && criteria.inclusionCriteria.length
@@ -456,7 +470,7 @@ app.post("/cohere/classify", async (req, res) => {
         (Array.isArray(coherePayload?.output) && coherePayload.output) ||
         (Array.isArray(coherePayload?.data) && coherePayload.data) ||
         (Array.isArray(coherePayload?.items) && coherePayload.items) ||
-        null;
+        findFirstArray(coherePayload);
 
       if (!parsed) {
         console.error("Cohere payload sin array interpretable", JSON.stringify(coherePayload, null, 2));
