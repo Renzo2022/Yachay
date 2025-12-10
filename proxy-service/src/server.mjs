@@ -112,30 +112,27 @@ const findFirstArray = (payload) => {
 };
 
 const COHERE_CLASSIFICATION_SCHEMA = {
-  type: "json_schema",
-  json_schema: {
-    name: "phase3_classification",
-    schema: {
-      type: "object",
-      properties: {
-        results: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              classification: { type: "string", enum: ["INCLUIR", "EXCLUIR", "DUDA"] },
-              justification: { type: "string" },
-              subtopic: { type: "string" },
-            },
-            required: ["id", "classification", "justification"],
-            additionalProperties: false,
+  type: "json_object",
+  schema: {
+    type: "object",
+    properties: {
+      results: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            classification: { type: "string", enum: ["INCLUIR", "EXCLUIR", "DUDA"] },
+            justification: { type: "string" },
+            subtopic: { type: "string" },
           },
+          required: ["id", "classification", "justification"],
+          additionalProperties: false,
         },
       },
-      required: ["results"],
-      additionalProperties: false,
     },
+    required: ["results"],
+    additionalProperties: false,
   },
 };
 
