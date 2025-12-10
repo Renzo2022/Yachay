@@ -2,6 +2,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -66,7 +67,11 @@ export const listenToProjects = (userId: string, callback: (projects: Project[])
 
 const getProjectDocRef = (projectId: string) => doc(projectsCollection, projectId)
 const getCandidatesCollection = (projectId: string) => collection(getProjectDocRef(projectId), 'candidates')
+const getCandidateDocRef = (projectId: string, candidateId: string) =>
+  doc(getCandidatesCollection(projectId), encodeURIComponent(candidateId))
 const getIncludedCollection = (projectId: string) => collection(getProjectDocRef(projectId), 'included_studies')
+const getIncludedDocRef = (projectId: string, candidateId: string) =>
+  doc(getIncludedCollection(projectId), encodeURIComponent(candidateId))
 const getQualityAssessmentsCollection = (projectId: string) =>
   collection(getProjectDocRef(projectId), 'quality_assessments')
 const getPrismaDocRef = (projectId: string) => doc(collection(getProjectDocRef(projectId), 'prisma'), 'stats')
@@ -99,12 +104,30 @@ export const savePhase2State = async (projectId: string, phase2: Phase2Data) => 
   })
 }
 
+const sanitizeFirestoreData = <T>(payload: T): T => {
+  if (payload === null || typeof payload !== 'object') {
+    return payload
+  }
+  if (Array.isArray(payload)) {
+    return payload.map((entry) => sanitizeFirestoreData(entry)) as T
+  }
+  const cleanEntry: Record<string, unknown> = {}
+  Object.entries(payload as Record<string, unknown>).forEach(([key, value]) => {
+    if (value === undefined) {
+      return
+    }
+    cleanEntry[key] = sanitizeFirestoreData(value)
+  })
+  return cleanEntry as T
+}
+
 export const saveProjectCandidates = async (projectId: string, papers: ExternalPaper[]) => {
   const candidatesCollection = getCandidatesCollection(projectId)
   await Promise.all(
     papers.map((paper) => {
-      const candidate = createCandidateFromExternal(projectId, paper)
-      return setDoc(doc(candidatesCollection, candidate.id), candidate, { merge: true })
+      const candidate = sanitizeFirestoreData(createCandidateFromExternal(projectId, paper))
+      const docId = encodeURIComponent(candidate.id)
+      return setDoc(doc(candidatesCollection, docId), candidate, { merge: true })
     }),
   )
   await updateDoc(getProjectDocRef(projectId), { updatedAt: Date.now() })

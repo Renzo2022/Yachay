@@ -5,7 +5,7 @@ import { PaperCard } from '../components/PaperCard.tsx'
 import { StrategySummary } from '../components/StrategyGeneratorModal.tsx'
 import { Phase2Checklist } from '../components/Phase2Checklist'
 import type { ExternalPaper, ExternalSource, Phase2Strategy } from '../types.ts'
-import type { Phase2Data } from '../../projects/types.ts'
+import type { Phase2Data, SubquestionLog } from '../../projects/types.ts'
 import { generatePhase2Strategy, searchDatabase } from '../../../services/academic.service.ts'
 import { useProject } from '../../projects/ProjectContext.tsx'
 import { savePhase2State, saveProjectCandidates } from '../../projects/project.service.ts'
@@ -19,10 +19,14 @@ const SOURCE_LABELS: Record<ExternalSource, string> = {
   europe_pmc: 'Europe PMC',
 }
 const INITIAL_YEAR_FILTERS = { from: 2010, to: new Date().getFullYear() }
-
 const normalizeSubquestionKey = (value?: string | null): string => {
   const trimmed = value?.trim()
   return trimmed && trimmed.length > 0 ? trimmed : 'Subpregunta sin título'
+}
+
+const formatSourceList = (sources: ExternalSource[]): string => {
+  if (!sources?.length) return 'Sin fuentes registradas'
+  return sources.map((source) => SOURCE_LABELS[source]).join(', ')
 }
 
 const sanitizeStrategy = (input: Phase2Strategy | null | undefined): Phase2Strategy | null => {
@@ -69,6 +73,7 @@ type Phase2MetaState = {
 
 export const Phase2View = () => {
   const project = useProject()
+  const [rawPapers, setRawPapers] = useState<ExternalPaper[]>([])
   const [papers, setPapers] = useState<ExternalPaper[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
@@ -85,6 +90,9 @@ export const Phase2View = () => {
   const [searchedSubquestions, setSearchedSubquestions] = useState<Set<string>>(
     new Set(project.phase2?.searchedSubquestions ?? []),
   )
+  const [lockedSubquestions, setLockedSubquestions] = useState<Set<string>>(
+    new Set(project.phase2?.lockedSubquestions ?? []),
+  )
   const [searchingSubquestion, setSearchingSubquestion] = useState<string | null>(null)
   const [activeSubquestion, setActiveSubquestion] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -98,12 +106,35 @@ export const Phase2View = () => {
   const [documentationSummary, setDocumentationSummary] = useState<string | null>(
     project.phase2?.documentationSummary ?? null,
   )
+  const [subquestionLogs, setSubquestionLogs] = useState<Record<string, SubquestionLog>>(project.phase2?.subquestionLogs ?? {})
+  const [hideNoYear, setHideNoYear] = useState(project.phase2?.hideNoYear ?? false)
+  const [enforceYearRange, setEnforceYearRange] = useState(project.phase2?.enforceYearRange ?? true)
   const [derivationReady, setDerivationReady] = useState<boolean>(
     Boolean(project.phase2?.lastStrategy?.keywordMatrix?.length),
   )
   const [subquestionReady, setSubquestionReady] = useState<boolean>(
     Boolean(project.phase2?.lastStrategy?.subquestionStrategies?.length),
   )
+  const filterPapers = useCallback(
+    (source: ExternalPaper[]) => {
+      let filtered = source
+      if (hideNoYear) {
+        filtered = filtered.filter((paper) => typeof paper.year === 'number')
+      }
+      if (enforceYearRange) {
+        filtered = filtered.filter((paper) => {
+          if (typeof paper.year !== 'number') return true
+          return paper.year >= yearFilters.from && paper.year <= yearFilters.to
+        })
+      }
+      return filtered
+    },
+    [hideNoYear, enforceYearRange, yearFilters],
+  )
+
+  useEffect(() => {
+    setPapers(filterPapers(rawPapers))
+  }, [rawPapers, filterPapers])
 
   useEffect(() => {
     setStrategy(sanitizeStrategy(project.phase2?.lastStrategy))
@@ -111,6 +142,9 @@ export const Phase2View = () => {
     setSelectedSources(project.phase2?.selectedSources ?? ALL_SOURCES)
     setYearFilters(project.phase2?.yearFilters ?? INITIAL_YEAR_FILTERS)
     setSearchedSubquestions(new Set(project.phase2?.searchedSubquestions ?? []))
+    setLockedSubquestions(new Set(project.phase2?.lockedSubquestions ?? []))
+    setHideNoYear(project.phase2?.hideNoYear ?? false)
+    setEnforceYearRange(project.phase2?.enforceYearRange ?? true)
     setPhase2Meta({
       lastSearchAt: project.phase2?.lastSearchAt ?? null,
       lastSearchSubquestion: project.phase2?.lastSearchSubquestion ?? null,
@@ -119,6 +153,7 @@ export const Phase2View = () => {
     })
     setDerivationReady(Boolean(project.phase2?.lastStrategy?.keywordMatrix?.length))
     setSubquestionReady(Boolean(project.phase2?.lastStrategy?.subquestionStrategies?.length))
+    setSubquestionLogs(project.phase2?.subquestionLogs ?? {})
     setDocumentationSummary(project.phase2?.documentationSummary ?? null)
   }, [project.phase2])
 
@@ -134,6 +169,12 @@ export const Phase2View = () => {
               : Array.from(hiddenSubquestions),
           selectedSources: override.selectedSources !== undefined ? override.selectedSources : selectedSources,
           yearFilters: override.yearFilters ?? yearFilters,
+          lockedSubquestions:
+            override.lockedSubquestions !== undefined
+              ? [...override.lockedSubquestions]
+              : Array.from(lockedSubquestions),
+          hideNoYear: override.hideNoYear ?? hideNoYear,
+          enforceYearRange: override.enforceYearRange ?? enforceYearRange,
           searchedSubquestions:
             override.searchedSubquestions !== undefined
               ? [...override.searchedSubquestions]
@@ -153,14 +194,30 @@ export const Phase2View = () => {
               ? override.documentationGeneratedAt
               : phase2Meta.documentationGeneratedAt ?? null,
           documentationSummary:
-            override.documentationSummary !== undefined ? override.documentationSummary : documentationSummary,
+            override.documentationSummary !== undefined
+              ? override.documentationSummary
+              : documentationSummary ?? null,
+          subquestionLogs: override.subquestionLogs ?? subquestionLogs,
         }
         await savePhase2State(project.id, payload)
       } catch (error) {
         console.error('persistPhase2State', error)
       }
     },
-    [project.id, strategy, hiddenSubquestions, selectedSources, yearFilters, phase2Meta, documentationSummary],
+    [
+      project.id,
+      strategy,
+      hiddenSubquestions,
+      selectedSources,
+      yearFilters,
+      lockedSubquestions,
+      hideNoYear,
+      enforceYearRange,
+      searchedSubquestions,
+      phase2Meta,
+      documentationSummary,
+      subquestionLogs,
+    ],
   )
 
   const handleToggleSource = (source: ExternalSource) => {
@@ -280,17 +337,23 @@ export const Phase2View = () => {
   }
 
   const selectedPapers = useMemo(() => papers.filter((paper) => selectedIds.has(paper.id)), [papers, selectedIds])
+  const allVisibleSelected = useMemo(() => papers.length > 0 && papers.every((paper) => selectedIds.has(paper.id)), [papers, selectedIds])
 
   const visibleSubquestions = useMemo(() => {
     if (!strategy) return []
     return strategy.subquestionStrategies.filter((block) => !hiddenSubquestions.has(block.subquestion))
   }, [strategy, hiddenSubquestions])
 
-  const hasSearchedAllSubquestions = useMemo(() => {
+  const currentSubLocked = useMemo(() => {
+    if (!activeSubquestion) return false
+    return lockedSubquestions.has(normalizeSubquestionKey(activeSubquestion))
+  }, [activeSubquestion, lockedSubquestions])
+
+  const hasCompletedAllSubquestions = useMemo(() => {
     if (!subquestionReady) return false
     if (visibleSubquestions.length === 0) return false
-    return visibleSubquestions.every((block) => searchedSubquestions.has(normalizeSubquestionKey(block.subquestion)))
-  }, [visibleSubquestions, searchedSubquestions, subquestionReady])
+    return visibleSubquestions.every((block) => lockedSubquestions.has(normalizeSubquestionKey(block.subquestion)))
+  }, [visibleSubquestions, lockedSubquestions, subquestionReady])
 
   const showStatus = (message: string) => {
     setStatusMessage(message)
@@ -312,11 +375,6 @@ export const Phase2View = () => {
     }
   }
 
-  const handleYearFiltersChange = (next: { from: number; to: number }) => {
-    setYearFilters(next)
-    persistPhase2State({ yearFilters: next })
-  }
-
   const handleSearchSubquestion = async (
     block: Phase2Strategy['subquestionStrategies'][number] | undefined,
   ) => {
@@ -325,9 +383,12 @@ export const Phase2View = () => {
       showStatus('Selecciona al menos una base antes de buscar.')
       return
     }
-
     const targetSubquestion = block.subquestion || 'Subpregunta sin título'
     const normalizedKey = normalizeSubquestionKey(targetSubquestion)
+    if (lockedSubquestions.has(normalizedKey)) {
+      showStatus('Esta subpregunta ya se completó.')
+      return
+    }
     setSearchingSubquestion(targetSubquestion)
     setActiveSubquestion(targetSubquestion)
     setLoading(true)
@@ -341,45 +402,59 @@ export const Phase2View = () => {
         )
         const fallbackQuery =
           strategyMatch?.query || block.keywords?.join(' OR ') || block.subquestion || targetSubquestion
-        return await searchDatabase(source, fallbackQuery)
+        const results = await searchDatabase(source, fallbackQuery)
+        return { source, query: fallbackQuery, results }
       })
 
-      const results = (await Promise.all(tasks)).flat()
-      const filteredByYear = results.filter((paper) => {
-        if (!paper.year) return true
-        return paper.year >= yearFilters.from && paper.year <= yearFilters.to
-      })
+      const payloads = await Promise.all(tasks)
+      const results = payloads.flatMap((entry) => entry.results)
+      const visibleResults = filterPapers(results)
 
-      setPapers(filteredByYear)
+      setRawPapers(results)
+      setPapers(visibleResults)
       setSearchPerformed(true)
       const timestamp = Date.now()
       const nextMeta = {
         lastSearchAt: timestamp,
         lastSearchSubquestion: targetSubquestion,
-        lastSearchResultCount: filteredByYear.length,
-        documentationGeneratedAt: phase2Meta.documentationGeneratedAt,
+        lastSearchResultCount: visibleResults.length,
       }
-      setPhase2Meta(nextMeta)
-      setSearchedSubquestions((prev) => {
-        const next = new Set(prev)
-        next.add(normalizedKey)
-        persistPhase2State({
-          lastSearchAt: timestamp,
-          lastSearchSubquestion: targetSubquestion,
-          lastSearchResultCount: filteredByYear.length,
-          searchedSubquestions: Array.from(next),
-        })
-        return next
+      const strategyBlock = block
+      const databaseEntries = (strategyBlock.databaseStrategies ?? []).map((entry) => ({
+        database: entry?.database ?? 'Base sin nombre',
+        query: entry?.query ?? '',
+      }))
+      const nextLogEntry: SubquestionLog = {
+        subquestion: targetSubquestion,
+        lastSearchAt: timestamp,
+        savedAt: subquestionLogs[normalizedKey]?.savedAt ?? 0,
+        selectedSources,
+        yearFilters,
+        keywords: strategyBlock.keywords ?? [],
+        databaseStrategies: databaseEntries,
+        totalResults: visibleResults.length,
+        savedCount: subquestionLogs[normalizedKey]?.savedCount ?? 0,
+      }
+      const nextLogs = { ...subquestionLogs, [normalizedKey]: nextLogEntry }
+      setSubquestionLogs(nextLogs)
+      setPhase2Meta((prev) => ({ ...prev, ...nextMeta }))
+      const nextSearched = new Set(searchedSubquestions)
+      nextSearched.add(normalizedKey)
+      setSearchedSubquestions(nextSearched)
+      persistPhase2State({
+        ...nextMeta,
+        searchedSubquestions: Array.from(nextSearched),
+        subquestionLogs: nextLogs,
       })
       if (!searchedSubquestions.has(normalizedKey)) {
         showStatus(
-          filteredByYear.length > 0
-            ? `${filteredByYear.length} resultados para "${targetSubquestion}".`
+          visibleResults.length > 0
+            ? `${visibleResults.length} resultados para "${targetSubquestion}".`
             : `Sin resultados para "${targetSubquestion}".`,
         )
       } else {
         showStatus(
-          filteredByYear.length > 0
+          visibleResults.length > 0
             ? `Resultados actualizados para "${targetSubquestion}".`
             : `Sin resultados para "${targetSubquestion}".`,
         )
@@ -398,22 +473,52 @@ export const Phase2View = () => {
       showStatus('Necesitas una estrategia generada para documentarla.')
       return
     }
-    if (!hasSearchedAllSubquestions) {
-      showStatus('Ejecuta y documenta búsquedas para todas las subpreguntas antes de generar el informe.')
+    if (!hasCompletedAllSubquestions) {
+      showStatus('Completa y guarda los resultados de todas las subpreguntas antes de generar el informe.')
       return
     }
+
     const timestamp = Date.now()
     const humanDate = new Date(timestamp).toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })
-    const sourcesLabel =
-      selectedSources.length > 0 ? selectedSources.map((source) => SOURCE_LABELS[source]).join(', ') : 'Sin fuentes registradas'
+    const formatDateTime = (value?: number) => (value ? new Date(value).toLocaleString('es-ES') : 'Sin registro')
+
     const summaryLines = [
       `Fecha de registro: ${humanDate}`,
       `Pregunta principal: ${strategy.question || project.phase1?.mainQuestion || project.name}`,
-      `Fuentes consultadas: ${sourcesLabel}`,
+      `Fuentes consultadas: ${formatSourceList(selectedSources)}`,
       `Rango de años aplicado: ${yearFilters.from} - ${yearFilters.to}`,
-      `Última subpregunta buscada: ${phase2Meta.lastSearchSubquestion ?? 'Sin búsquedas registradas'}`,
-      `Resultados recuperados: ${phase2Meta.lastSearchResultCount ?? 0}`,
+      '',
+      'Subpreguntas documentadas:',
     ]
+
+    visibleSubquestions.forEach((block, index) => {
+      const key = normalizeSubquestionKey(block.subquestion)
+      const log = subquestionLogs[key]
+      const fallbackStrategies =
+        block.databaseStrategies?.map((entry) => ({
+          database: entry?.database ?? 'Base sin nombre',
+          query: entry?.query ?? '',
+        })) ?? []
+      const sectionLines = [
+        `#${index + 1} ${block.subquestion || 'Subpregunta sin título'}`,
+        `- Fuentes usadas: ${formatSourceList(log?.selectedSources ?? selectedSources)}`,
+        `- Búsqueda aplicada: ${(log?.keywords ?? block.keywords ?? []).join(', ') || 'Sin keywords registradas'}`,
+        `- Resultados visibles: ${log?.totalResults ?? phase2Meta.lastSearchResultCount ?? 0}`,
+        `- Candidatos guardados: ${log?.savedCount ?? 0}`,
+        `- Última búsqueda: ${formatDateTime(log?.lastSearchAt)}`,
+        `- Guardado el: ${formatDateTime(log?.savedAt)}`,
+        `- Cadenas por base:`,
+        ...(log?.databaseStrategies ?? fallbackStrategies).map(
+          (entry) => `   · ${entry.database}: ${entry.query || 'Cadena no disponible'}`,
+        ),
+      ]
+      if (!log) {
+        sectionLines.push('   · Notas: esta subpregunta se completó antes de registrar los detalles automáticamente.')
+      }
+      sectionLines.push('')
+      summaryLines.push(...sectionLines)
+    })
+
     const summary = summaryLines.join('\n')
     setDocumentationSummary(summary)
     setPhase2Meta((prev) => ({ ...prev, documentationGeneratedAt: timestamp }))
@@ -435,7 +540,7 @@ export const Phase2View = () => {
     {
       id: 'search',
       label: 'Buscar artículos (bases tradicionales)',
-      completed: searchPerformed && papers.length > 0,
+      completed: hasCompletedAllSubquestions,
     },
     {
       id: 'documentation',
@@ -444,8 +549,16 @@ export const Phase2View = () => {
     },
   ]
 
+  const toggleSelectAll = () => {
+    if (allVisibleSelected) {
+      setSelectedIds(new Set())
+      return
+    }
+    setSelectedIds(new Set(papers.map((paper) => paper.id)))
+  }
+
   const handleSaveCandidates = async () => {
-    if (selectedPapers.length === 0) return
+    if (selectedPapers.length === 0 || !activeSubquestion) return
     setSaving(true)
     await saveProjectCandidates(project.id, selectedPapers)
     confetti({
@@ -457,6 +570,40 @@ export const Phase2View = () => {
     showStatus(`${selectedPapers.length} candidatos guardados`)
     setSelectedIds(new Set())
     setSaving(false)
+
+    const activeKey = normalizeSubquestionKey(activeSubquestion)
+    const prevLog = subquestionLogs[activeKey]
+    const timestamp = Date.now()
+    const strategyBlock = strategy?.subquestionStrategies.find(
+      (block) => normalizeSubquestionKey(block.subquestion) === activeKey,
+    )
+    const databaseEntries =
+      prevLog?.databaseStrategies ??
+      (strategyBlock?.databaseStrategies ?? []).map((entry) => ({
+        database: entry?.database ?? 'Base sin nombre',
+        query: entry?.query ?? '',
+      }))
+    const nextLog: SubquestionLog = {
+      subquestion: activeSubquestion,
+      lastSearchAt: prevLog?.lastSearchAt ?? timestamp,
+      savedAt: timestamp,
+      selectedSources: prevLog?.selectedSources ?? selectedSources,
+      yearFilters: prevLog?.yearFilters ?? yearFilters,
+      keywords: prevLog?.keywords ?? strategyBlock?.keywords ?? [],
+      databaseStrategies: databaseEntries,
+      totalResults: prevLog?.totalResults ?? papers.length,
+      savedCount: selectedPapers.length,
+    }
+    const nextLogs = { ...subquestionLogs, [activeKey]: nextLog }
+    setSubquestionLogs(nextLogs)
+
+    const nextLocked = new Set(lockedSubquestions)
+    nextLocked.add(activeKey)
+    setLockedSubquestions(nextLocked)
+    persistPhase2State({
+      lockedSubquestions: Array.from(nextLocked),
+      subquestionLogs: nextLogs,
+    })
   }
 
   return (
@@ -510,9 +657,10 @@ export const Phase2View = () => {
               onGenerateDocumentation={handleGenerateDocumentation}
               showDerivation={derivationReady}
               showSubquestions={subquestionReady}
-              showDocumentation={hasSearchedAllSubquestions}
-              canGenerateDocumentation={hasSearchedAllSubquestions}
+              showDocumentation={hasCompletedAllSubquestions}
+              canGenerateDocumentation={hasCompletedAllSubquestions}
               documentationSummary={documentationSummary}
+              lockedSubquestions={lockedSubquestions}
             />
           ) : null}
 
@@ -533,7 +681,7 @@ export const Phase2View = () => {
               <div className="grid lg:grid-cols-2 gap-6">
                 {papers.map((paper) => (
                   <PaperCard
-                    key={paper.id}
+                    key={`${paper.source}-${paper.id}`}
                     paper={paper}
                     selected={selectedIds.has(paper.id)}
                     onToggle={toggleSelection}
@@ -547,21 +695,30 @@ export const Phase2View = () => {
       </section>
 
       {loading ? (
-        <div className="fixed inset-0 bg-black/75 text-text-main flex items-center justify-center font-mono text-xl z-40">
+        <div className="fixed inset-0 bg-black/75 text-text-main flex items-center justify-center font-mono text-xl z-40 text-center px-6">
           {searchingSubquestion ? `🔍 Buscando papers para "${searchingSubquestion}"...` : 'Procesando búsqueda...'}
         </div>
       ) : null}
 
-      {selectedIds.size > 0 ? (
+      {papers.length > 0 && !currentSubLocked ? (
         <div className="fixed bottom-0 left-0 right-0 bg-accent-success border-t-4 border-black p-4 flex flex-wrap items-center justify-between gap-4 text-main font-mono z-30">
-          <span>{selectedIds.size} papers seleccionados</span>
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              type="button"
+              className="border-3 border-black px-4 py-2 bg-white text-black font-black uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
+              onClick={toggleSelectAll}
+            >
+              {allVisibleSelected ? 'Deseleccionar todo' : 'Seleccionar todo'}
+            </button>
+            <span>{selectedIds.size} seleccionados</span>
+          </div>
           <button
             type="button"
-            className="border-4 border-black px-6 py-3 bg-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+            className="border-4 border-black px-5 py-3 bg-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
             onClick={handleSaveCandidates}
-            disabled={saving}
+            disabled={saving || selectedIds.size === 0}
           >
-            {saving ? 'Guardando...' : '💾 Guardar candidatos'}
+            {saving ? 'Guardando...' : '💾 Guardar seleccionados'}
           </button>
         </div>
       ) : null}

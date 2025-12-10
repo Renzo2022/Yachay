@@ -16,6 +16,12 @@ type StrategySummaryProps = {
   showDocumentation?: boolean
   canGenerateDocumentation?: boolean
   documentationSummary?: string | null
+  lockedSubquestions?: Set<string>
+}
+
+const normalizeSubquestionKey = (value?: string | null): string => {
+  const trimmed = value?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : 'Subpregunta sin título'
 }
 
 const COMPONENT_STYLES: Record<
@@ -43,9 +49,9 @@ export const StrategySummary = ({
   showDocumentation = true,
   canGenerateDocumentation = false,
   documentationSummary = null,
+  lockedSubquestions,
 }: StrategySummaryProps) => {
   const keywordMatrix = strategy.keywordMatrix ?? []
-  const recommendations = strategy.recommendations ?? []
   const displayedSubquestions = subquestions ?? strategy.subquestionStrategies ?? []
 
   return (
@@ -101,6 +107,10 @@ export const StrategySummary = ({
               PubMed · Semantic Scholar · CrossRef · Europe PMC
             </span>
           </div>
+          <p className="font-mono text-sm text-black">
+            Si deseas recuperar todos los resultados de cada base, espera al menos 5 minutos entre solicitudes consecutivas
+            para evitar saturar las APIs federadas y garantizar respuestas completas.
+          </p>
           <div className="space-y-4 text-black">
             {displayedSubquestions.length === 0 ? (
               <article className="border-3 border-dashed border-black p-4 bg-neutral-50">
@@ -110,90 +120,100 @@ export const StrategySummary = ({
               </article>
             ) : null}
 
-            {displayedSubquestions.map((block, index) => (
-              <article
-                key={block?.subquestion ?? `subquestion-${index}`}
-                className={`border-3 border-black p-4 space-y-4 bg-neutral-50 ${
-                  activeSubquestion && activeSubquestion === block?.subquestion ? 'ring-4 ring-accent-secondary' : ''
-                }`}
-              >
-                <header className="space-y-2">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-mono uppercase tracking-[0.3em] text-black">
-                        Subpregunta #{index + 1}
-                      </p>
-                      <h5 className="text-xl font-black uppercase text-black">{block?.subquestion ?? 'Subpregunta sin título'}</h5>
+            {displayedSubquestions.map((block, index) => {
+              const normalizedKey = normalizeSubquestionKey(block?.subquestion)
+              const isLocked = lockedSubquestions?.has(normalizedKey)
+
+              return (
+                <article
+                  key={block?.subquestion ?? `subquestion-${index}`}
+                  className={`border-3 border-black p-4 space-y-4 bg-neutral-50 ${
+                    activeSubquestion && activeSubquestion === block?.subquestion ? 'ring-4 ring-accent-secondary' : ''
+                  }`}
+                >
+                  <header className="space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-mono uppercase tracking-[0.3em] text-black">
+                          Subpregunta #{index + 1}
+                        </p>
+                        <h5 className="text-xl font-black uppercase text-black">{block?.subquestion ?? 'Subpregunta sin título'}</h5>
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        {isLocked ? (
+                          <span className="border-2 border-black bg-accent-success text-main px-2 py-1 text-xs font-mono uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                            Completada
+                          </span>
+                        ) : null}
+                        {onSearchSubquestion && !isLocked ? (
+                          <BrutalButton
+                            variant="secondary"
+                            size="sm"
+                            className="bg-accent-secondary text-black border-black"
+                            onClick={() => onSearchSubquestion(block)}
+                            disabled={
+                              disableRemoval ||
+                              !block?.databaseStrategies?.length ||
+                              Boolean(searchingSubquestion && searchingSubquestion !== block?.subquestion)
+                            }
+                          >
+                            {searchingSubquestion === block?.subquestion ? 'Buscando...' : 'Buscar papers'}
+                          </BrutalButton>
+                        ) : null}
+                        {onRemoveSubquestion ? (
+                          <button
+                            type="button"
+                            className="border-3 border-black px-3 py-1 text-xs font-mono uppercase bg-accent-danger text-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
+                            onClick={() => block?.subquestion && onRemoveSubquestion(block.subquestion)}
+                          >
+                            Eliminar
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                      {onSearchSubquestion ? (
-                        <BrutalButton
-                          variant="secondary"
-                          size="sm"
-                          className="bg-accent-secondary text-black border-black"
-                          onClick={() => onSearchSubquestion(block)}
-                          disabled={
-                            disableRemoval ||
-                            !block?.databaseStrategies?.length ||
-                            Boolean(searchingSubquestion && searchingSubquestion !== block?.subquestion)
-                          }
+                  </header>
+
+                  <div className="space-y-2">
+                    <p className="font-mono text-sm text-black">Palabras clave derivadas</p>
+                    <div className="flex flex-wrap gap-2">
+                      {(block?.keywords ?? []).map((keyword) => (
+                        <span
+                          key={keyword}
+                          className="border-2 border-black bg-white px-3 py-1 text-xs font-mono shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
                         >
-                          {searchingSubquestion === block?.subquestion ? 'Buscando...' : 'Buscar papers'}
-                        </BrutalButton>
-                      ) : null}
-                      {onRemoveSubquestion ? (
-                        <button
-                          type="button"
-                          className="border-3 border-black px-3 py-1 text-xs font-mono uppercase bg-accent-danger text-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
-                          onClick={() => block?.subquestion && onRemoveSubquestion(block.subquestion)}
-                        >
-                          Eliminar
-                        </button>
-                      ) : null}
+                          {keyword}
+                        </span>
+                      ))}
                     </div>
                   </div>
-                </header>
 
-                <div className="space-y-2">
-                  <p className="font-mono text-sm text-black">Palabras clave derivadas</p>
-                  <div className="flex flex-wrap gap-2">
-                    {(block?.keywords ?? []).map((keyword) => (
-                      <span
-                        key={keyword}
-                        className="border-2 border-black bg-white px-3 py-1 text-xs font-mono shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
-                      >
-                        {keyword}
-                      </span>
-                    ))}
+                  <div className="overflow-x-auto border-3 border-black bg-white">
+                    <table className="w-full text-left font-mono text-xs">
+                      <thead className="bg-neutral-100">
+                        <tr>
+                          <th className="border-b-3 border-black px-3 py-2">Base</th>
+                          <th className="border-b-3 border-black px-3 py-2">Cadena de búsqueda</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(block?.databaseStrategies ?? []).map((entry, dbIndex) => {
+                          const database = entry?.database ?? 'Base sin nombre'
+                          const query = entry?.query ?? 'Cadena no disponible'
+                          return (
+                            <tr key={`${block?.subquestion ?? 'sub'}-${database}-${dbIndex}`} className="odd:bg-neutral-50">
+                              <td className="border-b-3 border-black px-3 py-2 font-bold">{database}</td>
+                              <td className="border-b-3 border-black px-3 py-2">
+                                <code className="block whitespace-pre-wrap">{query}</code>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                </div>
-
-                <div className="overflow-x-auto border-3 border-black bg-white">
-                  <table className="w-full text-left font-mono text-xs">
-                    <thead className="bg-neutral-100">
-                      <tr>
-                        <th className="border-b-3 border-black px-3 py-2">Base</th>
-                        <th className="border-b-3 border-black px-3 py-2">Cadena de búsqueda</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(block?.databaseStrategies ?? []).map((entry, dbIndex) => {
-                        const database = entry?.database ?? 'Base sin nombre'
-                        const query = entry?.query ?? 'Cadena no disponible'
-                        return (
-                          <tr key={`${block?.subquestion ?? 'sub'}-${database}-${dbIndex}`} className="odd:bg-neutral-50">
-                            <td className="border-b-3 border-black px-3 py-2 font-bold">{database}</td>
-                            <td className="border-b-3 border-black px-3 py-2">
-                              <code className="block whitespace-pre-wrap">{query}</code>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </article>
-            ))}
+                </article>
+              )
+            })}
           </div>
         </div>
       ) : null}
@@ -212,16 +232,6 @@ export const StrategySummary = ({
                   </p>
                 )}
               </div>
-              {recommendations.length > 0 ? (
-                <div className="space-y-2">
-                  <p className="text-xs font-mono uppercase tracking-[0.3em] text-black">Recomendaciones automáticas (inglés)</p>
-                  <ul className="list-disc list-inside font-mono text-sm text-black space-y-1">
-                    {recommendations.map((tip, index) => (
-                      <li key={`${tip}-${index}`}>{tip}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
             </div>
             {onGenerateDocumentation ? (
               <BrutalButton

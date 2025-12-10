@@ -18,9 +18,9 @@ export const ScreeningTabs = ({ activeTab, onChange }: ScreeningTabsProps) => (
           type="button"
           onClick={() => onChange(tab.id)}
           className={[
-            'flex-1 border-3 border-black px-4 py-3 font-mono text-sm uppercase tracking-tight',
+            'flex-1 border-3 border-black px-4 py-3 font-mono text-sm uppercase tracking-tight text-black',
             'shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded-none',
-            isActive ? 'bg-accent-warning text-main' : 'bg-neutral-100 hover:-translate-y-1 hover:-translate-x-1',
+            isActive ? 'bg-accent-warning' : 'bg-neutral-100 hover:-translate-y-1 hover:-translate-x-1',
           ].join(' ')}
         >
           {tab.label}

@@ -4,17 +4,34 @@ import type { QualityLevel } from '../phase4_quality/types.ts'
 
 export type PhaseKey = 'phase1' | 'phase2' | 'phase3' | 'phase4' | 'phase5' | 'phase6' | 'phase7'
 
+export interface SubquestionLog {
+  subquestion: string
+  lastSearchAt: number
+  savedAt: number
+  selectedSources: ExternalSource[]
+  yearFilters: { from: number; to: number }
+  keywords: string[]
+  databaseStrategies: { database: string; query: string }[]
+  totalResults: number
+  savedCount: number
+}
+
 export interface Phase2Data {
   lastStrategy: Phase2Strategy | null
   hiddenSubquestions: string[]
   selectedSources?: ExternalSource[]
   yearFilters?: { from: number; to: number }
   searchedSubquestions?: string[]
+  lockedSubquestions?: string[]
+  cooldownUntil?: number | null
+  hideNoYear?: boolean
+  enforceYearRange?: boolean
   lastSearchAt?: number | null
   lastSearchSubquestion?: string | null
   lastSearchResultCount?: number | null
   documentationGeneratedAt?: number | null
   documentationSummary?: string | null
+  subquestionLogs?: Record<string, SubquestionLog>
 }
 
 export interface Project {

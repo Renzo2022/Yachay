@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { doc, updateDoc } from 'firebase/firestore'
 import { firestore } from '../../../services/firebase/firebase.ts'
-import type { Project, Candidate, PrismaData, PhaseKey } from '../types.ts'
+import type { Project, Candidate, Phase2Data, PhaseKey, PrismaData } from '../types.ts'
 import type { Phase1Data } from '../../phase1_planning/types.ts'
 import type { QualityAssessment } from '../../phase4_quality/types.ts'
 import type { ExtractionData } from '../../phase5_extraction/types.ts'
@@ -46,12 +46,12 @@ const computePhase1Completion = (data?: Phase1Data | null): number => {
   return tasks.filter(Boolean).length
 }
 
-const computePhase2Completion = (prisma: PrismaData | null, candidates: Candidate[]): number => {
+const computePhase2Completion = (phase2?: Phase2Data | null, candidates: Candidate[] = []): number => {
   const steps = [
-    Boolean(prisma && prisma.identified > 0),
-    candidates.length >= 1,
-    candidates.length >= 5,
-    Boolean(prisma && prisma.screened > 0),
+    Boolean(phase2?.lastStrategy),
+    (phase2?.lockedSubquestions?.length ?? 0) > 0,
+    candidates.length > 0,
+    Boolean(phase2?.documentationGeneratedAt),
   ]
   return steps.filter(Boolean).length
 }
@@ -157,7 +157,7 @@ export const useProjectProgress = (projectId?: string) => {
   const phaseProgress = useMemo<PhaseProgressMap>(() => {
     const progress: PhaseProgressMap = {
       phase1: { completed: computePhase1Completion(phase1Data), total: PHASE_TASKS.phase1 },
-      phase2: { completed: computePhase2Completion(prisma, screeningCandidates), total: PHASE_TASKS.phase2 },
+      phase2: { completed: computePhase2Completion(project?.phase2, screeningCandidates), total: PHASE_TASKS.phase2 },
       phase3: { completed: computePhase3Completion(screeningCandidates, prisma), total: PHASE_TASKS.phase3 },
       phase4: { completed: computePhase4Completion(qualityAssessments, includedStudies), total: PHASE_TASKS.phase4 },
       phase5: { completed: computePhase5Completion(extractions, includedStudies), total: PHASE_TASKS.phase5 },

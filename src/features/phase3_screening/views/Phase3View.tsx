@@ -137,11 +137,13 @@ export const Phase3View = () => {
           <div className="grid md:grid-cols-2 gap-4">
             <BrutalInput
               label="Duplicados eliminados"
+              labelClassName="text-black"
               value={editingPrisma.duplicates}
               onChange={(event) => handlePrismaChange('duplicates', event.target.value)}
             />
             <BrutalInput
               label="Registros adicionales"
+              labelClassName="text-black"
               value={editingPrisma.additional}
               onChange={(event) => handlePrismaChange('additional', event.target.value)}
             />
