@@ -87,6 +87,12 @@ export const Phase2View = () => {
     lastSearchResultCount: project.phase2?.lastSearchResultCount ?? null,
     documentationGeneratedAt: project.phase2?.documentationGeneratedAt ?? null,
   })
+  const [derivationReady, setDerivationReady] = useState<boolean>(
+    Boolean(project.phase2?.lastStrategy?.keywordMatrix?.length),
+  )
+  const [subquestionReady, setSubquestionReady] = useState<boolean>(
+    Boolean(project.phase2?.lastStrategy?.subquestionStrategies?.length),
+  )
 
   useEffect(() => {
     setStrategy(sanitizeStrategy(project.phase2?.lastStrategy))
@@ -99,6 +105,8 @@ export const Phase2View = () => {
       lastSearchResultCount: project.phase2?.lastSearchResultCount ?? null,
       documentationGeneratedAt: project.phase2?.documentationGeneratedAt ?? null,
     })
+    setDerivationReady(Boolean(project.phase2?.lastStrategy?.keywordMatrix?.length))
+    setSubquestionReady(Boolean(project.phase2?.lastStrategy?.subquestionStrategies?.length))
   }, [project.phase2])
 
   const persistPhase2State = useCallback(
@@ -157,27 +165,33 @@ export const Phase2View = () => {
     setDerivationLoading(true)
     setStrategyError(null)
     try {
-      const payload = await generatePhase2Strategy(
-        project.phase1 ?? createPhase1Defaults(),
-        project.name,
-        selectedSources,
-      )
+      const payload = await generatePhase2Strategy(project.phase1 ?? createPhase1Defaults(), project.name, selectedSources, {
+        step: 'derivation',
+      })
       const nextHidden = new Set<string>()
       setStrategy(payload)
       setHiddenSubquestions(nextHidden)
       persistPhase2State({ lastStrategy: payload, hiddenSubquestions: Array.from(nextHidden) })
+      setDerivationReady(true)
+      setSubquestionReady(false)
     } catch (error) {
       console.error('handleGenerateStrategies', error)
       setStrategy(null)
       setHiddenSubquestions(new Set())
       setStrategyError('No pudimos generar la estrategia. Intenta nuevamente.')
       persistPhase2State({ lastStrategy: null, hiddenSubquestions: [] })
+      setDerivationReady(false)
+      setSubquestionReady(false)
     } finally {
       setDerivationLoading(false)
     }
   }
 
   const handleGenerateSubquestionKeywords = async () => {
+    if (!derivationReady || !strategy?.keywordMatrix?.length) {
+      showStatus('Primero genera la derivación de términos para habilitar las keywords por subpregunta.')
+      return
+    }
     if (selectedSources.length === 0) {
       showStatus('Selecciona al menos una base antes de generar keywords.')
       return
@@ -185,11 +199,10 @@ export const Phase2View = () => {
     setSubquestionLoading(true)
     setStrategyError(null)
     try {
-      const payload = await generatePhase2Strategy(
-        project.phase1 ?? createPhase1Defaults(),
-        project.name,
-        selectedSources,
-      )
+      const payload = await generatePhase2Strategy(project.phase1 ?? createPhase1Defaults(), project.name, selectedSources, {
+        step: 'subquestions',
+        keywordMatrix: strategy.keywordMatrix,
+      })
       const nextStrategy: Phase2Strategy = strategy
         ? { ...strategy, subquestionStrategies: payload.subquestionStrategies, recommendations: payload.recommendations }
         : payload
@@ -198,6 +211,7 @@ export const Phase2View = () => {
       setHiddenSubquestions(nextHidden)
       persistPhase2State({ lastStrategy: nextStrategy, hiddenSubquestions: Array.from(nextHidden) })
       showStatus('Keywords por subpregunta regeneradas.')
+      setSubquestionReady(true)
     } catch (error) {
       console.error('handleGenerateSubquestionKeywords', error)
       setStrategyError('No pudimos regenerar las keywords por subpregunta. Intenta nuevamente.')
@@ -370,6 +384,7 @@ export const Phase2View = () => {
             onToggleSource={handleToggleSource}
             onGenerateDerivation={handleGenerateDerivation}
             onGenerateSubquestionKeywords={handleGenerateSubquestionKeywords}
+            canGenerateSubquestionKeywords={derivationReady && !derivationLoading}
             disabled={loading || derivationLoading || subquestionLoading}
           />
         </div>
@@ -410,6 +425,8 @@ export const Phase2View = () => {
               activeSubquestion={activeSubquestion}
               selectedSources={selectedSources}
               onGenerateDocumentation={handleGenerateDocumentation}
+              showDerivation={derivationReady}
+              showSubquestions={subquestionReady}
             />
           ) : null}
 

@@ -311,27 +311,117 @@ const SAMPLE_STRATEGY: Phase2Strategy = {
   ],
 }
 
+type StrategyStep = 'derivation' | 'subquestions' | 'full'
+
+type GeneratePhase2StrategyOptions = {
+  step?: StrategyStep
+  keywordMatrix?: KeywordDerivation[]
+}
+
+const sanitizeStrategyResponse = (input: Partial<Phase2Strategy> | null | undefined): Phase2Strategy => {
+  if (!input) {
+    return {
+      question: '',
+      keywordMatrix: [],
+      subquestionStrategies: [],
+      recommendations: [],
+    }
+  }
+
+  const sanitizeKeywords = (terms?: unknown[]): string[] =>
+    Array.isArray(terms)
+      ? terms
+          .map((term) => {
+            if (term === null || term === undefined) return ''
+            if (typeof term === 'string') return term.trim()
+            if (typeof term === 'number' || typeof term === 'boolean') return term.toString().trim()
+            if (typeof term === 'object' && 'toString' in (term as object)) {
+              return (term as { toString: () => string }).toString().trim()
+            }
+            return ''
+          })
+          .filter((value): value is string => Boolean(value))
+      : []
+
+  return {
+    question: input.question ?? '',
+    keywordMatrix: Array.isArray(input.keywordMatrix)
+      ? input.keywordMatrix.map((entry) => ({
+          component: entry?.component ?? 'P',
+          concept: entry?.concept ?? '',
+          terms: sanitizeKeywords(entry?.terms),
+        }))
+      : [],
+    subquestionStrategies: Array.isArray(input.subquestionStrategies)
+      ? input.subquestionStrategies.map((block) => ({
+          subquestion: block?.subquestion ?? '',
+          keywords: sanitizeKeywords(block?.keywords),
+          databaseStrategies: Array.isArray(block?.databaseStrategies)
+            ? block.databaseStrategies.map((strategy) => ({
+                database: strategy?.database ?? 'Database',
+                query: strategy?.query ?? '',
+                filters: strategy?.filters ?? '',
+                estimatedResults: strategy?.estimatedResults ?? '',
+              }))
+            : [],
+        }))
+      : [],
+    recommendations: sanitizeKeywords(input.recommendations as unknown[]),
+  }
+}
+
+const filterStrategyByStep = (strategy: Phase2Strategy, step: StrategyStep): Phase2Strategy => {
+  if (step === 'derivation') {
+    return {
+      ...strategy,
+      subquestionStrategies: [],
+      recommendations: [],
+    }
+  }
+
+  if (step === 'subquestions') {
+    return {
+      question: strategy.question,
+      keywordMatrix: [],
+      subquestionStrategies: strategy.subquestionStrategies,
+      recommendations: strategy.recommendations,
+    }
+  }
+
+  return strategy
+}
+
 export const generatePhase2Strategy = async (
   phase1: Phase1Data,
   topic: string,
   sources?: ExternalSource[],
+  options: GeneratePhase2StrategyOptions = {},
 ): Promise<Phase2Strategy> => {
   const sanitizedTopic = topic.trim() || 'Revisión sistemática en IA educativa'
+  const normalizedStep: StrategyStep = options.step ?? 'full'
 
   if (!hasProxy) {
     await delay(800)
-    return SAMPLE_STRATEGY
+    return filterStrategyByStep(sanitizeStrategyResponse(SAMPLE_STRATEGY), normalizedStep)
   }
 
   try {
-    return await proxyPost<Phase2Strategy>('/groq/search-strategy', {
+    const payload: Record<string, unknown> = {
       topic: sanitizedTopic,
       phase1,
       sources,
-    })
+      step: normalizedStep,
+    }
+
+    if (options.keywordMatrix?.length) {
+      payload.keywordMatrix = options.keywordMatrix
+    }
+
+    const response = await proxyPost<Partial<Phase2Strategy>>('/groq/search-strategy', payload)
+    return filterStrategyByStep(sanitizeStrategyResponse(response), normalizedStep)
   } catch (error) {
     console.error('generatePhase2Strategy error', error)
-    return SAMPLE_STRATEGY
+    return filterStrategyByStep(sanitizeStrategyResponse(SAMPLE_STRATEGY), normalizedStep)
   }
 }
 
