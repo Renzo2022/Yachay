@@ -20,6 +20,11 @@ const SOURCE_LABELS: Record<ExternalSource, string> = {
 }
 const INITIAL_YEAR_FILTERS = { from: 2010, to: new Date().getFullYear() }
 
+const normalizeSubquestionKey = (value?: string | null): string => {
+  const trimmed = value?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : 'Subpregunta sin título'
+}
+
 const sanitizeStrategy = (input: Phase2Strategy | null | undefined): Phase2Strategy | null => {
   if (!input) return null
   return {
@@ -77,6 +82,9 @@ export const Phase2View = () => {
   )
   const [selectedSources, setSelectedSources] = useState<ExternalSource[]>(project.phase2?.selectedSources ?? ALL_SOURCES)
   const [yearFilters, setYearFilters] = useState(project.phase2?.yearFilters ?? INITIAL_YEAR_FILTERS)
+  const [searchedSubquestions, setSearchedSubquestions] = useState<Set<string>>(
+    new Set(project.phase2?.searchedSubquestions ?? []),
+  )
   const [searchingSubquestion, setSearchingSubquestion] = useState<string | null>(null)
   const [activeSubquestion, setActiveSubquestion] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -102,6 +110,7 @@ export const Phase2View = () => {
     setHiddenSubquestions(new Set(project.phase2?.hiddenSubquestions ?? []))
     setSelectedSources(project.phase2?.selectedSources ?? ALL_SOURCES)
     setYearFilters(project.phase2?.yearFilters ?? INITIAL_YEAR_FILTERS)
+    setSearchedSubquestions(new Set(project.phase2?.searchedSubquestions ?? []))
     setPhase2Meta({
       lastSearchAt: project.phase2?.lastSearchAt ?? null,
       lastSearchSubquestion: project.phase2?.lastSearchSubquestion ?? null,
@@ -125,6 +134,10 @@ export const Phase2View = () => {
               : Array.from(hiddenSubquestions),
           selectedSources: override.selectedSources !== undefined ? override.selectedSources : selectedSources,
           yearFilters: override.yearFilters ?? yearFilters,
+          searchedSubquestions:
+            override.searchedSubquestions !== undefined
+              ? [...override.searchedSubquestions]
+              : Array.from(searchedSubquestions),
           lastSearchAt:
             override.lastSearchAt !== undefined ? override.lastSearchAt : phase2Meta.lastSearchAt ?? null,
           lastSearchSubquestion:
@@ -167,6 +180,7 @@ export const Phase2View = () => {
     setSearchPerformed(false)
     setActiveSubquestion(null)
     setSelectedIds(new Set())
+    setSearchedSubquestions(new Set())
     setYearFilters(INITIAL_YEAR_FILTERS)
     setDerivationLoading(true)
     setStrategyError(null)
@@ -177,11 +191,14 @@ export const Phase2View = () => {
       const nextHidden = new Set<string>()
       setStrategy(payload)
       setHiddenSubquestions(nextHidden)
+      const nextSearched = new Set<string>()
+      setSearchedSubquestions(nextSearched)
       setPhase2Meta((prev) => ({ ...prev, documentationGeneratedAt: null }))
       setDocumentationSummary(null)
       persistPhase2State({
         lastStrategy: payload,
         hiddenSubquestions: Array.from(nextHidden),
+        searchedSubquestions: Array.from(nextSearched),
         documentationGeneratedAt: null,
         documentationSummary: null,
       })
@@ -229,11 +246,14 @@ export const Phase2View = () => {
       const nextHidden = new Set<string>()
       setStrategy(nextStrategy)
       setHiddenSubquestions(nextHidden)
+      const nextSearched = new Set<string>()
+      setSearchedSubquestions(nextSearched)
       setPhase2Meta((prev) => ({ ...prev, documentationGeneratedAt: null }))
       setDocumentationSummary(null)
       persistPhase2State({
         lastStrategy: nextStrategy,
         hiddenSubquestions: Array.from(nextHidden),
+        searchedSubquestions: Array.from(nextSearched),
         documentationGeneratedAt: null,
         documentationSummary: null,
       })
@@ -265,6 +285,12 @@ export const Phase2View = () => {
     if (!strategy) return []
     return strategy.subquestionStrategies.filter((block) => !hiddenSubquestions.has(block.subquestion))
   }, [strategy, hiddenSubquestions])
+
+  const hasSearchedAllSubquestions = useMemo(() => {
+    if (!subquestionReady) return false
+    if (visibleSubquestions.length === 0) return false
+    return visibleSubquestions.every((block) => searchedSubquestions.has(normalizeSubquestionKey(block.subquestion)))
+  }, [visibleSubquestions, searchedSubquestions, subquestionReady])
 
   const showStatus = (message: string) => {
     setStatusMessage(message)
@@ -301,6 +327,7 @@ export const Phase2View = () => {
     }
 
     const targetSubquestion = block.subquestion || 'Subpregunta sin título'
+    const normalizedKey = normalizeSubquestionKey(targetSubquestion)
     setSearchingSubquestion(targetSubquestion)
     setActiveSubquestion(targetSubquestion)
     setLoading(true)
@@ -333,16 +360,30 @@ export const Phase2View = () => {
         documentationGeneratedAt: phase2Meta.documentationGeneratedAt,
       }
       setPhase2Meta(nextMeta)
-      persistPhase2State({
-        lastSearchAt: timestamp,
-        lastSearchSubquestion: targetSubquestion,
-        lastSearchResultCount: filteredByYear.length,
+      setSearchedSubquestions((prev) => {
+        const next = new Set(prev)
+        next.add(normalizedKey)
+        persistPhase2State({
+          lastSearchAt: timestamp,
+          lastSearchSubquestion: targetSubquestion,
+          lastSearchResultCount: filteredByYear.length,
+          searchedSubquestions: Array.from(next),
+        })
+        return next
       })
-      showStatus(
-        filteredByYear.length > 0
-          ? `${filteredByYear.length} resultados para "${targetSubquestion}".`
-          : `Sin resultados para "${targetSubquestion}".`,
-      )
+      if (!searchedSubquestions.has(normalizedKey)) {
+        showStatus(
+          filteredByYear.length > 0
+            ? `${filteredByYear.length} resultados para "${targetSubquestion}".`
+            : `Sin resultados para "${targetSubquestion}".`,
+        )
+      } else {
+        showStatus(
+          filteredByYear.length > 0
+            ? `Resultados actualizados para "${targetSubquestion}".`
+            : `Sin resultados para "${targetSubquestion}".`,
+        )
+      }
     } catch (error) {
       console.error('handleSearchSubquestion', error)
       showStatus('No pudimos ejecutar esa búsqueda. Intenta nuevamente.')
@@ -357,8 +398,8 @@ export const Phase2View = () => {
       showStatus('Necesitas una estrategia generada para documentarla.')
       return
     }
-    if (!searchPerformed) {
-      showStatus('Ejecuta al menos una búsqueda antes de documentar la estrategia.')
+    if (!hasSearchedAllSubquestions) {
+      showStatus('Ejecuta y documenta búsquedas para todas las subpreguntas antes de generar el informe.')
       return
     }
     const timestamp = Date.now()
@@ -469,8 +510,8 @@ export const Phase2View = () => {
               onGenerateDocumentation={handleGenerateDocumentation}
               showDerivation={derivationReady}
               showSubquestions={subquestionReady}
-              showDocumentation={searchPerformed}
-              canGenerateDocumentation={searchPerformed}
+              showDocumentation={hasSearchedAllSubquestions}
+              canGenerateDocumentation={hasSearchedAllSubquestions}
               documentationSummary={documentationSummary}
             />
           ) : null}

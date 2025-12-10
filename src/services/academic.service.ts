@@ -117,15 +117,70 @@ const fetchSemanticScholar = async (query: string) => {
   const data = await proxyGet<ProxyListResponse>('/semantic-scholar/search', { q: query, limit: RESULT_LIMIT })
   return (data.items ?? []).map((item) => sanitizePaper({ ...item, source: 'semantic_scholar' }))
 }
-
 const fetchCrossRef = async (query: string) => {
   const data = await proxyGet<ProxyListResponse>('/crossref/search', { q: query, rows: RESULT_LIMIT })
   return (data.items ?? []).map((item) => sanitizePaper({ ...item, source: 'crossref' }))
 }
 
+type EuropePmcRaw = {
+  id?: string
+  pmcid?: string
+  pmid?: string
+  doi?: string
+  fullTextUrlList?: {
+    fullTextUrl?: Array<{
+      url?: string
+      documentStyle?: string
+    }>
+  }
+}
+
+const resolveEuropePmcUrl = (item: EuropePmcRaw, query: string): string => {
+  const fullTextEntries = Array.isArray(item.fullTextUrlList?.fullTextUrl)
+    ? item.fullTextUrlList?.fullTextUrl ?? []
+    : []
+  const preferredFullText =
+    fullTextEntries.find((entry) => typeof entry?.url === 'string' && entry?.documentStyle === 'html') ??
+    fullTextEntries.find((entry) => typeof entry?.url === 'string')
+  if (preferredFullText?.url) {
+    return preferredFullText.url
+  }
+
+  const doi = typeof item?.doi === 'string' ? item.doi : null
+  if (doi) {
+    return `https://doi.org/${doi}`
+  }
+
+  const pmcid = typeof item?.pmcid === 'string' ? item.pmcid.replace(/^PMC/i, '') : null
+  if (pmcid) {
+    return `https://europepmc.org/article/PMC/${pmcid}`
+  }
+
+  const pmid = typeof item?.pmid === 'string' ? item.pmid : null
+  if (pmid) {
+    return `https://europepmc.org/article/MED/${pmid}`
+  }
+
+  const rawId = typeof item?.id === 'string' ? item.id : null
+  if (rawId) {
+    const [collection, identifier] = rawId.split('/')
+    if (identifier) {
+      return `https://europepmc.org/article/${collection ?? 'MED'}/${identifier}`
+    }
+  }
+
+  return `https://europepmc.org/search?query=${encodeURIComponent(query)}`
+}
+
 const fetchEuropePMC = async (query: string) => {
   const data = await proxyGet<ProxyListResponse>('/europe-pmc/search', { q: query, pageSize: RESULT_LIMIT })
-  return (data.items ?? []).map((item) => sanitizePaper({ ...item, source: 'europe_pmc' }))
+  return (data.items ?? []).map((item) =>
+    sanitizePaper({
+      ...item,
+      source: 'europe_pmc',
+      url: item?.url ?? resolveEuropePmcUrl(item as EuropePmcRaw, query),
+    }),
+  )
 }
 
 const sourceFetchers: Record<ExternalSource, (query: string) => Promise<ExternalPaper[]>> = {

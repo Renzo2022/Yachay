@@ -9,6 +9,7 @@ export interface Phase2Data {
   hiddenSubquestions: string[]
   selectedSources?: ExternalSource[]
   yearFilters?: { from: number; to: number }
+  searchedSubquestions?: string[]
   lastSearchAt?: number | null
   lastSearchSubquestion?: string | null
   lastSearchResultCount?: number | null
