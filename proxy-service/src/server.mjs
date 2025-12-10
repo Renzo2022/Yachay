@@ -500,7 +500,10 @@ app.post("/cohere/classify", async (req, res) => {
         findFirstArray(coherePayload);
 
       if (!parsed) {
-        console.error("Cohere payload sin array interpretable", JSON.stringify(coherePayload, null, 2));
+        console.error(
+          "Cohere payload sin array interpretable",
+          JSON.stringify({ payload: coherePayload, textBlob }, null, 2),
+        );
         throw new Error("Cohere devolvió un formato inesperado.");
       }
 
