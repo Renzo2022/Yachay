@@ -264,7 +264,7 @@ app.post("/groq/search-strategy", async (req, res) => {
 
   if (normalizedStep === "derivation") {
     systemContent +=
-      " Devuelve solo {question, keywordMatrix}. question DEBE estar redactada en español. keywordMatrix debe incluir exactamente las 4 entradas PICO con campos {component, concept, terms[]} y al menos 4 términos por componente. Los términos deben mantenerse en inglés para maximizar la compatibilidad con las bases.";
+      " Devuelve solo {question, keywordMatrix}. question DEBE estar redactada en español. keywordMatrix debe incluir exactamente las 4 entradas PICO con campos {component, concept, terms[]} y al menos 4 términos por componente. El campo concept debe ser un enunciado breve en español que resuma el foco del componente (no repitas literalmente el nombre del componente ni lo dejes en inglés). Los términos deben mantenerse en inglés para maximizar la compatibilidad con las bases.";
     userContent = `Tema: "${topic}"
 Fuentes seleccionadas: ${sourcesList}
 Protocolo Fase 1:
@@ -272,12 +272,12 @@ ${JSON.stringify(phase1, null, 2)}
 
 Objetivo del paso 1:
 1. Redacta question alineada a la pregunta principal de la fase 1, siempre en español (puedes reformularla).
-2. Construye keywordMatrix derivando términos SINÓNIMOS y controlados para cada componente PICO (P, I, C, O) usando solo inglés.
+2. Construye keywordMatrix derivando términos SINÓNIMOS y controlados para cada componente PICO (P, I, C, O) usando solo inglés, y redacta concept como un concepto central en español derivado de cada componente.
 3. Evita generar subpreguntas, keywords adicionales o recomendaciones en este paso.`;
   } else if (normalizedStep === "subquestions") {
     const matrixReference = Array.isArray(keywordMatrix) ? JSON.stringify(keywordMatrix, null, 2) : "[]";
     systemContent +=
-      " Devuelve solo {question, subquestionStrategies, recommendations}. question y cada subpregunta deben estar redactadas en español. Para cada subpregunta genera keywords en inglés y databaseStrategies específicos para PubMed, Semantic Scholar, CrossRef y Europe PMC con el formato {database, query}. No incluyas filtros ni campos adicionales en databaseStrategies. recommendations debe ser una lista accionable en español.";
+      " Devuelve solo {question, subquestionStrategies, recommendations}. question y cada subpregunta deben estar redactadas en español. Para cada subpregunta genera keywords en inglés y databaseStrategies específicos para PubMed, Semantic Scholar, CrossRef y Europe PMC con el formato {database, query}. Las cadenas deben ser booleanas completas y adaptadas a la sintaxis de cada base; no te limites a repetir un solo término ni dejes bases sin cubrir. No incluyas filtros ni campos adicionales en databaseStrategies. recommendations debe ser una lista accionable en español.";
     userContent = `Tema: "${topic}"
 Fuentes seleccionadas: ${sourcesList}
 Derivación confirmada (keywordMatrix):
@@ -287,7 +287,7 @@ ${JSON.stringify(phase1, null, 2)}
 
 Objetivo del paso 2:
 1. Con base en la derivación anterior, genera EXACTAMENTE 5 subpreguntas estratégicas en español.
-2. Para cada subpregunta define al menos 3 keywords en inglés y construye databaseStrategies con cadenas específicas para cada fuente (PubMed, Semantic Scholar, CrossRef, Europe PMC) en el formato {database, query}. No generes filtros ni estimaciones; enfócate únicamente en la cadena de búsqueda.
+2. Para cada subpregunta define al menos 3 keywords en inglés y construye databaseStrategies con cadenas booleanas específicas para cada fuente (PubMed, Semantic Scholar, CrossRef, Europe PMC) en el formato {database, query}. No generes filtros ni estimaciones; enfócate únicamente en la cadena de búsqueda y asegúrate de cubrir las cuatro bases.
 3. Incluye recomendaciones finales en español sobre cómo ajustar o refinar la búsqueda.
 4. No repitas keywordMatrix en este paso.`;
   } else {
