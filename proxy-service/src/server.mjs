@@ -482,7 +482,11 @@ app.post("/cohere/classify", async (req, res) => {
 
       const contentParts = response?.message?.content ?? [];
       const jsonPart = contentParts.find((part) => part?.json);
-      const textBlob = contentParts.map((part) => part?.text ?? "").join("\n").trim();
+      const textBlob =
+        contentParts.map((part) => part?.text ?? "").join("\n").trim() ||
+        response?.text ||
+        response?.message?.content?.[0]?.text ||
+        "";
 
       const coherePayload =
         jsonPart?.json ??
