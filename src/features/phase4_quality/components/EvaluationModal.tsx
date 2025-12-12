@@ -16,10 +16,10 @@ const studyTypes: StudyType[] = [
   'Systematic Review',
 ]
 
-const answerOptions: { label: string; value: CaspAnswer; className: string }[] = [
-  { label: 'CUMPLE', value: 'Yes', className: 'bg-green-400 text-black' },
-  { label: 'PARCIAL', value: 'Partial', className: 'bg-yellow-300 text-black' },
-  { label: 'NO CUMPLE', value: 'No', className: 'bg-red-500 text-white' },
+const answerOptions: { label: string; value: CaspAnswer; selectedClassName: string }[] = [
+  { label: 'CUMPLE', value: 'Yes', selectedClassName: 'bg-green-400 text-black' },
+  { label: 'PARCIAL', value: 'Partial', selectedClassName: 'bg-yellow-300 text-black' },
+  { label: 'NO CUMPLE', value: 'No', selectedClassName: 'bg-red-500 text-black' },
 ]
 
 const answerLabel: Record<CaspAnswer, string> = {
@@ -210,23 +210,28 @@ export const EvaluationModal = ({
                 <p className="font-bold text-lg text-neutral-900">{criterion.question}</p>
                 <div className="flex flex-wrap gap-3">
                   {answerOptions.map((option) => (
+                    (() => {
+                      const selected = criterion.answer === option.value
+                      return (
                     <button
                       key={option.value}
                       type="button"
                       disabled={isReadOnly}
                       onClick={() => updateAnswer(criterion.id, option.value)}
                       className={`px-4 py-3 border-3 border-black font-mono uppercase tracking-tight ${
-                        option.className
-                      } shadow-[4px_4px_0_0_#111] transition-transform ${
-                        criterion.answer === option.value ? 'translate-x-[-2px] translate-y-[-2px]' : 'bg-white'
+                        selected ? option.selectedClassName : 'bg-white text-black'
+                      } shadow-[4px_4px_0_0_#111] transition-transform disabled:opacity-100 ${
+                        selected ? 'translate-x-[-2px] translate-y-[-2px]' : ''
                       }`}
                     >
                       {option.label}
                     </button>
+                      )
+                    })()
                   ))}
                 </div>
                 <textarea
-                  className="w-full border-3 border-black bg-neutral-100 p-3 font-mono text-sm"
+                  className="w-full border-3 border-black bg-neutral-100 p-3 font-mono text-sm text-black"
                   placeholder="Evidencia textual (cita del título/resumen)"
                   rows={2}
                   value={criterion.evidence ?? ''}
@@ -234,7 +239,7 @@ export const EvaluationModal = ({
                   readOnly={isReadOnly}
                 />
                 <textarea
-                  className="w-full border-3 border-black bg-neutral-100 p-3 font-mono text-sm"
+                  className="w-full border-3 border-black bg-neutral-100 p-3 font-mono text-sm text-black"
                   placeholder="Justificación (por qué cumple / parcial / no cumple)"
                   rows={2}
                   value={criterion.justification ?? ''}
@@ -242,7 +247,7 @@ export const EvaluationModal = ({
                   readOnly={isReadOnly}
                 />
                 <textarea
-                  className="w-full border-3 border-black bg-neutral-100 p-3 font-mono text-sm"
+                  className="w-full border-3 border-black bg-neutral-100 p-3 font-mono text-sm text-black"
                   placeholder="Notas opcionales..."
                   rows={2}
                   value={criterion.notes ?? ''}

@@ -33,6 +33,46 @@ const proxyPost = async <T>(path: string, body: unknown): Promise<T> => {
   return (await response.json()) as T
 }
 
+const proxyGet = async <T>(path: string, params?: Record<string, string | number | undefined | null>): Promise<T> => {
+  if (!hasProxy) {
+    throw new Error('Proxy base URL is not configured')
+  }
+
+  const query = new URLSearchParams()
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      query.set(key, String(value))
+    }
+  })
+
+  const url = `${PROXY_BASE_URL}${path}${query.toString() ? `?${query.toString()}` : ''}`
+  const response = await fetch(url)
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`Proxy request failed (${response.status}): ${text}`)
+  }
+
+  return (await response.json()) as T
+}
+
+export type UnpaywallResolveResponse = {
+  doi: string
+  isOa: boolean
+  pdfUrl: string | null
+  landingUrl: string | null
+}
+
+export const resolveUnpaywallPdf = async (doi: string): Promise<UnpaywallResolveResponse> => {
+  return await proxyGet<UnpaywallResolveResponse>('/unpaywall/resolve', { doi })
+}
+
+export const buildPdfProxyUrl = (rawPdfUrl: string) => {
+  if (!rawPdfUrl) return rawPdfUrl
+  if (!hasProxy) return rawPdfUrl
+  return `${PROXY_BASE_URL}/pdf/proxy?url=${encodeURIComponent(rawPdfUrl)}`
+}
+
 export type QualityAssessmentSuggestion = {
   studyType?: StudyType
   criteria: Array<{

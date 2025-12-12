@@ -20,7 +20,7 @@ export const listenToExtractionMatrix = (
 
 export const saveExtractionEntry = async (projectId: string, data: ExtractionData) => {
   const extractionRef = doc(getExtractionCollection(projectId), data.id)
-  const includedRef = doc(getIncludedCollection(projectId), data.studyId)
+  const includedRef = doc(getIncludedCollection(projectId), encodeURIComponent(data.studyId))
 
   await Promise.all([
     setDoc(extractionRef, data, { merge: true }),

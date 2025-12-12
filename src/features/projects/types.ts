@@ -67,6 +67,7 @@ export interface Candidate extends ExternalPaper {
   qualityStatus?: 'pending' | 'completed'
   qualityLevel?: QualityLevel
   qualityScore?: number
+  pdfUrl?: string
   extractionStatus?: 'pending' | 'extracted' | 'verified'
   extractionId?: string
   dedupKey: string

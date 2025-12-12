@@ -278,6 +278,14 @@ export const updateCandidateRecord = async (
   await setDoc(getCandidateDocRef(projectId, candidateId), updates, { merge: true })
 }
 
+export const updateIncludedStudyRecord = async (
+  projectId: string,
+  candidateId: string,
+  updates: Partial<Candidate>,
+) => {
+  await setDoc(getIncludedDocRef(projectId, candidateId), updates, { merge: true })
+}
+
 export const confirmCandidateDecision = async (
   projectId: string,
   candidate: Candidate,

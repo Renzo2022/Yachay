@@ -269,6 +269,95 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, timestamp: Date.now() });
 });
 
+app.get("/unpaywall/resolve", async (req, res) => {
+  const doi = req.query.doi?.toString();
+  const email = (process.env.UNPAYWALL_EMAIL ?? req.query.email?.toString() ?? "").trim();
+  if (!doi) {
+    res.status(400).json({ error: "Missing doi" });
+    return;
+  }
+  if (!email) {
+    res.status(400).json({ error: "Missing UNPAYWALL_EMAIL env var" });
+    return;
+  }
+
+  try {
+    const url = `https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`;
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "yachay-ai-proxy (mailto:" + email + ")",
+      },
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      res.status(response.status).json({ error: "Unpaywall request failed", details: text });
+      return;
+    }
+    const payload = await response.json();
+
+    const best = payload?.best_oa_location;
+    const locations = Array.isArray(payload?.oa_locations) ? payload.oa_locations : [];
+    const pdfUrl =
+      best?.url_for_pdf ??
+      locations.find((entry) => typeof entry?.url_for_pdf === "string")?.url_for_pdf ??
+      null;
+
+    res.json({
+      doi,
+      isOa: Boolean(payload?.is_oa),
+      pdfUrl,
+      landingUrl: best?.url ?? payload?.best_oa_location?.url ?? null,
+    });
+  } catch (error) {
+    console.error("/unpaywall/resolve", error);
+    res.status(500).json({ error: "Unpaywall resolve failed" });
+  }
+});
+
+app.get("/pdf/proxy", async (req, res) => {
+  const url = req.query.url?.toString();
+  if (!url) {
+    res.status(400).json({ error: "Missing url" });
+    return;
+  }
+  if (!/^https?:\/\//i.test(url)) {
+    res.status(400).json({ error: "Only http(s) URLs are allowed" });
+    return;
+  }
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "yachay-ai-proxy",
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      res.status(response.status).json({ error: "PDF fetch failed", details: text });
+      return;
+    }
+
+    const lengthHeader = response.headers.get("content-length");
+    if (lengthHeader) {
+      const length = Number(lengthHeader);
+      if (!Number.isNaN(length) && length > 25 * 1024 * 1024) {
+        res.status(413).json({ error: "PDF too large" });
+        return;
+      }
+    }
+
+    const contentType = response.headers.get("content-type") ?? "application/pdf";
+    const buffer = Buffer.from(await response.arrayBuffer());
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.send(buffer);
+  } catch (error) {
+    console.error("/pdf/proxy", error);
+    res.status(500).json({ error: "PDF proxy failed" });
+  }
+});
+
 app.post("/groq/protocol", async (req, res) => {
   const topic = req.body?.topic;
   if (!topic) {

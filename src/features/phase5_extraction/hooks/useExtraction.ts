@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Candidate } from '../../projects/types.ts'
 import type { ExtractionData } from '../types.ts'
 import { createEmptyExtraction } from '../types.ts'
-import { listenToIncludedStudies } from '../../projects/project.service.ts'
+import { listenToIncludedStudies, updateIncludedStudyRecord } from '../../projects/project.service.ts'
 import { listenToExtractionMatrix, saveExtractionEntry } from '../../../services/extraction.service.ts'
 import { extractTextFromPdf, truncateText } from '../../../services/pdf.service.ts'
-import { extractDataRAG } from '../../../services/ai.service.ts'
+import { buildPdfProxyUrl, extractDataRAG, resolveUnpaywallPdf } from '../../../services/ai.service.ts'
 import { useToast } from '../../../core/toast/ToastProvider.tsx'
 
 export const RAG_STEPS = ['Leyendo PDF...', 'Truncando texto...', 'Consultando LLM...', 'Parseando JSON...']
@@ -68,9 +68,40 @@ export const useExtraction = (projectId: string) => {
   const autoExtract = useCallback(
     async (study: Candidate, source?: File | string | null) => {
       try {
-        const pdfSource = source ?? study.url
+        const extractDoi = () => {
+          if (typeof study.doi === 'string' && study.doi.trim()) return study.doi.trim()
+          if (typeof study.id === 'string' && /^10\./.test(study.id)) return study.id
+          if (typeof study.url === 'string') {
+            const match = study.url.match(/doi\.org\/(10\.[^\s?#]+)/i)
+            if (match?.[1]) return match[1]
+          }
+          return null
+        }
+
+        const isLikelyPdfUrl = (value: string) => /\.pdf(\?|#|$)/i.test(value)
+
+        let pdfSource: File | string | null | undefined = source
         if (!pdfSource) {
-          throw new Error('Este estudio no tiene PDF asociado. Arrastra uno para continuar.')
+          if (typeof study.pdfUrl === 'string' && study.pdfUrl.trim()) {
+            pdfSource = buildPdfProxyUrl(study.pdfUrl.trim())
+          } else if (typeof study.url === 'string' && isLikelyPdfUrl(study.url)) {
+            pdfSource = buildPdfProxyUrl(study.url)
+          }
+        }
+
+        if (!pdfSource) {
+          const doi = extractDoi()
+          if (!doi) {
+            throw new Error('No se encontró DOI ni PDF. Arrastra un PDF para continuar.')
+          }
+
+          const resolved = await resolveUnpaywallPdf(doi)
+          if (!resolved?.pdfUrl) {
+            throw new Error('Unpaywall no encontró PDF Open Access. Arrastra un PDF manualmente para continuar.')
+          }
+
+          await updateIncludedStudyRecord(projectId, study.id, { pdfUrl: resolved.pdfUrl })
+          pdfSource = buildPdfProxyUrl(resolved.pdfUrl)
         }
 
         setError(null)
