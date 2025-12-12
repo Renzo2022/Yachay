@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ScreeningTabs } from '../components/ScreeningTabs.tsx'
 import { ScreeningCard } from '../components/ScreeningCard.tsx'
 import { PrismaDiagram } from '../components/PrismaDiagram.tsx'
@@ -8,13 +9,11 @@ import {
   listenToCandidates,
   listenToPrismaData,
   updateCandidateRecord,
-  updatePrismaData,
 } from '../../projects/project.service.ts'
 import { createPrismaData, type Candidate, type PrismaData } from '../../projects/types.ts'
 import { classifyCandidatesWithCohere } from '../../../services/ai.service.ts'
 import { BrutalButton } from '../../../core/ui-kit/BrutalButton.tsx'
 import { BrutalCard } from '../../../core/ui-kit/BrutalCard.tsx'
-import { BrutalInput } from '../../../core/ui-kit/BrutalInput.tsx'
 import { Phase3Checklist } from '../components/Phase3Checklist.tsx'
 
 export const Phase3View = () => {
@@ -25,24 +24,59 @@ export const Phase3View = () => {
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set())
   const [isBatching, setIsBatching] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const [editingPrisma, setEditingPrisma] = useState({ duplicates: '0', additional: '0' })
-  const [showResultsTable, setShowResultsTable] = useState(false)
-  const [tableReady, setTableReady] = useState(false)
+  const [checklistSlot, setChecklistSlot] = useState<HTMLElement | null>(null)
+  const [highlightedId, setHighlightedId] = useState<string | null>(null)
+  const candidateRefs = useRef<Map<string, HTMLDivElement | null>>(new Map())
+  const highlightTimeout = useRef<number | null>(null)
+  const inclusionCriteria = useMemo(
+    () => (project.phase1?.inclusionCriteria ?? []).filter((entry: string | undefined) => entry?.trim().length),
+    [project.phase1?.inclusionCriteria],
+  )
+  const exclusionCriteria = useMemo(
+    () => (project.phase1?.exclusionCriteria ?? []).filter((entry: string | undefined) => entry?.trim().length),
+    [project.phase1?.exclusionCriteria],
+  )
 
   useEffect(() => {
     const unsubscribeCandidates = listenToCandidates(project.id, setCandidates)
     const unsubscribePrisma = listenToPrismaData(project.id, (data) => {
       setPrismaData(data)
-      setEditingPrisma({
-        duplicates: String(data.duplicates),
-        additional: String(data.additionalRecords),
-      })
     })
     return () => {
       unsubscribeCandidates()
       unsubscribePrisma()
     }
   }, [project.id])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    setChecklistSlot(document.getElementById('phase3-checklist-slot'))
+    return () => {
+      if (highlightTimeout.current) {
+        window.clearTimeout(highlightTimeout.current)
+      }
+    }
+  }, [])
+
+  const registerCandidateRef = (id: string) => (node: HTMLDivElement | null) => {
+    if (node) {
+      candidateRefs.current.set(id, node)
+    } else {
+      candidateRefs.current.delete(id)
+    }
+  }
+
+  const handleScrollToCandidate = (id: string) => {
+    const target = candidateRefs.current.get(id)
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setHighlightedId(id)
+      if (highlightTimeout.current) {
+        window.clearTimeout(highlightTimeout.current)
+      }
+      highlightTimeout.current = window.setTimeout(() => setHighlightedId(null), 1800)
+    }
+  }
 
   const pendingCandidates = useMemo(
     () => candidates.filter((candidate) => !candidate.userConfirmed),
@@ -79,67 +113,95 @@ export const Phase3View = () => {
       { id: 'dedup', label: 'Eliminar duplicados', completed: duplicatesManaged },
       { id: 'screening', label: 'Cribado inicial (título/resumen)', completed: pendingCandidates.length === 0 && candidates.length > 0 },
       { id: 'docs', label: 'Documentar exclusiones', completed: exclusionsDocumented },
+      { id: 'prisma', label: 'Crear diagrama PRISMA', completed: prismaData.screened > 0 && prismaData.included > 0 },
     ],
-    [duplicatesManaged, pendingCandidates.length, candidates.length, exclusionsDocumented],
+    [duplicatesManaged, pendingCandidates.length, candidates.length, exclusionsDocumented, prismaData.screened, prismaData.included],
   )
 
   const handleBatchScreening = async () => {
-    if (pendingCandidates.length === 0) return
-    setShowResultsTable(false)
-    setTableReady(false)
+    if (pendingCandidates.length === 0 || isBatching) return
+
     setIsBatching(true)
     setProcessingIds(new Set(pendingCandidates.map((candidate) => candidate.id)))
-    setStatusMessage('Enviando candidatos a Cohere…')
+    setStatusMessage('Procesando cribado automático…')
+
     try {
       const results = await classifyCandidatesWithCohere(pendingCandidates, project.phase1)
       const pendingMap = new Map(pendingCandidates.map((candidate) => [candidate.id, candidate]))
       const updatedIds = new Set<string>()
       const now = Date.now()
+      const summary: Record<NonNullable<Candidate['decision']>, number> = {
+        include: 0,
+        exclude: 0,
+        uncertain: 0,
+      }
 
       await Promise.all(
         results.map(async (entry) => {
           const target = pendingMap.get(entry.id)
           if (!target) return
           updatedIds.add(entry.id)
+          summary[entry.decision] += 1
+
+          const shouldConfirm = entry.decision !== 'uncertain'
+
           await updateCandidateRecord(project.id, entry.id, {
             decision: entry.decision,
             reason: entry.justification,
             aiJustification: entry.justification,
             aiSubtopic: entry.subtopic,
-            confidence: 'medium',
+            confidence: shouldConfirm ? 'medium' : 'low',
             screeningStatus: 'screened',
             processedAt: now,
+            userConfirmed: shouldConfirm ? true : target.userConfirmed ?? false,
           })
+
+          if (shouldConfirm) {
+            const enrichedCandidate: Candidate = {
+              ...target,
+              decision: entry.decision,
+              reason: entry.justification,
+              aiJustification: entry.justification,
+              aiSubtopic: entry.subtopic ?? '—',
+              confidence: 'medium',
+              screeningStatus: 'screened',
+              processedAt: now,
+              userConfirmed: true,
+            }
+            await confirmCandidateDecision(project.id, enrichedCandidate, entry.decision)
+          }
         }),
       )
 
-      const fallbackUpdates = pendingCandidates
-        .filter((candidate) => !updatedIds.has(candidate.id))
-        .map((candidate) =>
-          updateCandidateRecord(project.id, candidate.id, {
-            decision: 'uncertain',
-            reason: 'Sin respuesta del modelo para este registro.',
-            aiJustification: 'Sin respuesta del modelo para este registro.',
-            aiSubtopic: candidate.aiSubtopic,
-            confidence: 'low',
-            screeningStatus: 'screened',
-            processedAt: now,
+      const fallbackCandidates = pendingCandidates.filter((candidate) => !updatedIds.has(candidate.id))
+      if (fallbackCandidates.length) {
+        await Promise.all(
+          fallbackCandidates.map(async (candidate) => {
+            summary.uncertain += 1
+            await updateCandidateRecord(project.id, candidate.id, {
+              decision: 'uncertain',
+              reason: 'Sin respuesta del modelo para este registro.',
+              aiJustification: 'Sin respuesta del modelo para este registro.',
+              aiSubtopic: candidate.aiSubtopic,
+              confidence: 'low',
+              screeningStatus: 'screened',
+              processedAt: now,
+              userConfirmed: false,
+            })
           }),
         )
-      if (fallbackUpdates.length) {
-        await Promise.all(fallbackUpdates)
       }
 
-      setTableReady(true)
-      setShowResultsTable(true)
-      setStatusMessage('Cribado IA completado')
+      setStatusMessage(
+        `Cribado IA completado · Incluidos ${summary.include}, Excluidos ${summary.exclude}, Dudas ${summary.uncertain}`,
+      )
     } catch (error) {
       console.error('handleBatchScreening', error)
       setStatusMessage('Error al clasificar con Cohere')
     } finally {
       setProcessingIds(new Set())
       setIsBatching(false)
-      setTimeout(() => setStatusMessage(null), 3000)
+      setTimeout(() => setStatusMessage(null), 4000)
     }
   }
 
@@ -154,12 +216,61 @@ export const Phase3View = () => {
     uncertain: 'bg-accent-warning text-main border-black',
   }
 
-  useEffect(() => {
-    if (aiResults.length === 0) {
-      setTableReady(false)
-      setShowResultsTable(false)
-    }
-  }, [aiResults.length])
+  const aiOverviewCard = (
+    <BrutalCard className="bg-neutral-100 space-y-6">
+      <header className="space-y-1">
+        <p className="text-xs font-mono uppercase tracking-[0.4em] text-main">Fase 3 · Cribado</p>
+        <h2 className="text-3xl font-black uppercase text-main">Valida y documenta exclusiones</h2>
+        <p className="font-mono text-sm text-black">
+          Revisa los títulos/resúmenes con IA y actualiza el diagrama PRISMA según los resultados.
+        </p>
+      </header>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <p className="text-sm font-mono text-main">Total guardados: {candidates.length}</p>
+      </div>
+      <div className="space-y-4">
+        <div className="border-3 border-black bg-white p-4 space-y-2">
+          <p className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-500">Pregunta principal</p>
+          <p className="text-lg font-black text-main">{mainQuestion}</p>
+        </div>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="border-3 border-black bg-white p-3">
+            <p className="text-xs font-mono uppercase tracking-[0.3em] text-accent-success">Criterios de inclusión</p>
+            <ul className="mt-2 list-disc pl-4 text-sm text-neutral-800 space-y-1">
+              {inclusionCriteria.length > 0 ? (
+                inclusionCriteria.map((criterion) => <li key={criterion}>{criterion}</li>)
+              ) : (
+                <li>Sin criterios definidos.</li>
+              )}
+            </ul>
+          </div>
+          <div className="border-3 border-black bg-white p-3">
+            <p className="text-xs font-mono uppercase tracking-[0.3em] text-accent-danger">Criterios de exclusión</p>
+            <ul className="mt-2 list-disc pl-4 text-sm text-neutral-800 space-y-1">
+              {exclusionCriteria.length > 0 ? (
+                exclusionCriteria.map((criterion) => <li key={criterion}>{criterion}</li>)
+              ) : (
+                <li>Sin criterios definidos.</li>
+              )}
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-3 pt-2">
+        <BrutalButton
+          variant="secondary"
+          className="flex-1 bg-accent-warning text-main border-black"
+          onClick={handleBatchScreening}
+          disabled={pendingCandidates.length === 0 || isBatching}
+        >
+          🤖 Cribado Automático
+        </BrutalButton>
+      </div>
+      <p className="text-xs font-mono uppercase tracking-[0.3em] text-accent-warning mt-2">
+        {pendingCandidates.length} Candidatos pendientes
+      </p>
+    </BrutalCard>
+  )
 
   const handleConfirm = async (candidate: Candidate, decision: Candidate['decision']) => {
     await confirmCandidateDecision(project.id, candidate, decision)
@@ -167,26 +278,17 @@ export const Phase3View = () => {
     setTimeout(() => setStatusMessage(null), 2500)
   }
 
-  const handlePrismaChange = (key: 'duplicates' | 'additional', value: string) => {
-    if (!/^\d*$/.test(value)) return
-    setEditingPrisma((prev) => ({ ...prev, [key]: value }))
-  }
-
-  const persistPrisma = async () => {
-    await updatePrismaData(project.id, {
-      duplicates: Number(editingPrisma.duplicates || 0),
-      additionalRecords: Number(editingPrisma.additional || 0),
-    })
-    setStatusMessage('PRISMA actualizado')
-    setTimeout(() => setStatusMessage(null), 2000)
-  }
+  const checklistPortal = checklistSlot ? createPortal(<Phase3Checklist items={checklistItems} />, checklistSlot) : null
 
   return (
     <div className="space-y-6">
+      {checklistPortal}
+      {activeTab === 'ai' && <div className="max-w-6xl mx-auto">{aiOverviewCard}</div>}
       <ScreeningTabs activeTab={activeTab} onChange={setActiveTab} />
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {[
           { label: 'Registros identificados', value: prismaData.identified },
+          { label: 'Sin resumen (filtrados)', value: prismaData.withoutAbstract },
           { label: 'Duplicados eliminados', value: prismaData.duplicates },
           { label: 'Registros cribados', value: prismaData.screened },
           { label: 'Incluidos tras cribado', value: prismaData.included },
@@ -205,55 +307,19 @@ export const Phase3View = () => {
         <div className="flex-1 space-y-6">
           {activeTab === 'ai' ? (
             <div className="space-y-6">
-              <BrutalCard className="bg-neutral-100 space-y-6">
-                <header className="space-y-1">
-                  <p className="text-xs font-mono uppercase tracking-[0.4em] text-main">Fase 3 · Cribado</p>
-                  <h2 className="text-3xl font-black uppercase text-main">Valida y documenta exclusiones</h2>
-                  <p className="font-mono text-sm text-black">
-                    Revisa los títulos/resúmenes con IA y actualiza el diagrama PRISMA según los resultados.
-                  </p>
-                </header>
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-mono uppercase tracking-[0.3em] text-accent-warning">
-                      {pendingCandidates.length} Candidatos pendientes
-                    </p>
-                    <p className="text-sm font-mono text-main">Total guardados: {candidates.length}</p>
-                  </div>
-                </div>
-                <div className="border-3 border-black bg-white p-4 space-y-2">
-                  <p className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-500">Pregunta principal</p>
-                  <p className="text-lg font-black text-main">{mainQuestion}</p>
-                </div>
-                <div className="flex flex-wrap gap-3 pt-2">
-                  <BrutalButton
-                    variant="secondary"
-                    className="flex-1 bg-accent-warning text-main border-black"
-                    onClick={handleBatchScreening}
-                    disabled={pendingCandidates.length === 0 || isBatching}
-                  >
-                    🤖 Cribado Automático
-                  </BrutalButton>
-                  <BrutalButton
-                    variant="secondary"
-                    className="flex-1 bg-neutral-900 text-text-main border-black"
-                    onClick={() => setActiveTab('prisma')}
-                  >
-                    📊 Diagrama PRISMA
-                  </BrutalButton>
-                </div>
-              </BrutalCard>
-
               {candidates.length === 0 ? (
                 <div className="border-4 border-dashed border-accent-warning bg-neutral-900 text-text-main text-center py-20 px-8 shadow-brutal">
                   No hay candidatos cargados. Completa la fase de búsqueda para continuar.
                 </div>
               ) : (
                 <>
-                  {showResultsTable && tableReady && aiResults.length > 0 ? (
+                  {aiResults.length > 0 ? (
                     <div className="border-4 border-black bg-white shadow-brutal overflow-x-auto">
+                      <div className="bg-neutral-900 text-text-main px-4 py-2 text-xs font-mono uppercase tracking-[0.3em]">
+                        Tabla de cribado asistido
+                      </div>
                       <table className="min-w-full table-fixed text-sm font-mono">
-                        <thead className="bg-neutral-900 text-text-main uppercase tracking-[0.2em] text-xs">
+                        <thead className="bg-neutral-100 uppercase tracking-[0.2em] text-xs text-black">
                           <tr>
                             <th className="px-4 py-3 text-left">Título</th>
                             <th className="px-4 py-3 text-left">Decisión IA</th>
@@ -266,6 +332,13 @@ export const Phase3View = () => {
                             <tr key={result.id} className="border-t border-neutral-200">
                               <td className="px-4 py-3">
                                 <p className="font-bold text-main">{result.title}</p>
+                                <button
+                                  type="button"
+                                  className="mt-2 text-xs font-mono uppercase tracking-[0.2em] text-accent-warning underline"
+                                  onClick={() => handleScrollToCandidate(result.id)}
+                                >
+                                  Ver tarjeta
+                                </button>
                               </td>
                               <td className="px-4 py-3">
                                 <span className={`px-2 py-1 inline-block font-black ${decisionClasses[result.decision]}`}>
@@ -282,12 +355,19 @@ export const Phase3View = () => {
                   ) : null}
                   <div className="grid lg:grid-cols-2 gap-6">
                     {candidates.map((candidate) => (
-                      <ScreeningCard
+                      <div
                         key={candidate.id}
-                        candidate={candidate}
-                        processing={processingIds.has(candidate.id)}
-                        onConfirm={(decision) => handleConfirm(candidate, decision)}
-                      />
+                        ref={registerCandidateRef(candidate.id)}
+                        className={`transition-shadow duration-300 ${
+                          highlightedId === candidate.id ? 'ring-4 ring-accent-warning' : ''
+                        }`}
+                      >
+                        <ScreeningCard
+                          candidate={candidate}
+                          processing={processingIds.has(candidate.id)}
+                          onConfirm={(decision) => handleConfirm(candidate, decision)}
+                        />
+                      </div>
                     ))}
                   </div>
                 </>
@@ -295,35 +375,9 @@ export const Phase3View = () => {
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="grid md:grid-cols-2 gap-4">
-                <BrutalInput
-                  label="Duplicados eliminados"
-                  labelClassName="text-black"
-                  value={editingPrisma.duplicates}
-                  onChange={(event) => handlePrismaChange('duplicates', event.target.value)}
-                  disabled
-                  badge="Auto"
-                />
-                <BrutalInput
-                  label="Registros adicionales"
-                  labelClassName="text-black"
-                  value={editingPrisma.additional}
-                  onChange={(event) => handlePrismaChange('additional', event.target.value)}
-                />
-              </div>
-              <p className="text-xs font-mono text-neutral-600">
-                Los duplicados se actualizan automáticamente al guardar candidatos en la Fase 2. Aquí solo debes registrar
-                registros adicionales documentados manualmente.
-              </p>
-              <BrutalButton variant="secondary" className="bg-accent-warning text-main border-black" onClick={persistPrisma}>
-                Guardar datos PRISMA
-              </BrutalButton>
               <PrismaDiagram data={prismaData} />
             </div>
           )}
-        </div>
-        <div className="w-full lg:w-80">
-          <Phase3Checklist items={checklistItems} />
         </div>
       </div>
 

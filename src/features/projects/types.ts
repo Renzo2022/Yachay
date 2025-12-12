@@ -74,10 +74,10 @@ export interface Candidate extends ExternalPaper {
 
 export interface PrismaData {
   identified: number
+  withoutAbstract: number
   duplicates: number
   screened: number
   included: number
-  additionalRecords: number
 }
 
 export const createProjectDefaults = (overrides?: Partial<Project>): Project => ({
@@ -109,8 +109,8 @@ export const createCandidateFromExternal = (projectId: string, paper: ExternalPa
 
 export const createPrismaData = (overrides?: Partial<PrismaData>): PrismaData => ({
   identified: overrides?.identified ?? 0,
+  withoutAbstract: overrides?.withoutAbstract ?? 0,
   duplicates: overrides?.duplicates ?? 0,
   screened: overrides?.screened ?? 0,
   included: overrides?.included ?? 0,
-  additionalRecords: overrides?.additionalRecords ?? 0,
 })

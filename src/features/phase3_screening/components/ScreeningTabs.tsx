@@ -4,7 +4,7 @@ type ScreeningTabsProps = {
 }
 
 const tabs = [
-  { id: 'ai', label: '🤖 Cribado Automático' },
+  { id: 'ai', label: 'Resumen Cribado' },
   { id: 'prisma', label: '📊 Diagrama PRISMA' },
 ] as const
 

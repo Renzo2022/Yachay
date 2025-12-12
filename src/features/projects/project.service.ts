@@ -144,15 +144,22 @@ const buildDedupKey = (paper: Pick<ExternalPaper, 'id' | 'doi' | 'title' | 'auth
 
 const ensurePrismaCounters = async (
   projectId: string,
-  { identifiedDelta = 0, duplicatesDelta = 0 }: { identifiedDelta?: number; duplicatesDelta?: number },
+  {
+    identifiedDelta = 0,
+    duplicatesDelta = 0,
+    withoutAbstractDelta = 0,
+  }: { identifiedDelta?: number; duplicatesDelta?: number; withoutAbstractDelta?: number },
 ) => {
-  if (!identifiedDelta && !duplicatesDelta) return
+  if (!identifiedDelta && !duplicatesDelta && !withoutAbstractDelta) return
   const prismaRef = getPrismaDocRef(projectId)
   const snapshot = await getDoc(prismaRef)
   const current = snapshot.exists() ? (snapshot.data() as PrismaData) : createPrismaData()
   const nextPayload: Partial<PrismaData> = {}
   if (identifiedDelta) {
     nextPayload.identified = (current.identified ?? 0) + identifiedDelta
+  }
+  if (withoutAbstractDelta) {
+    nextPayload.withoutAbstract = (current.withoutAbstract ?? 0) + withoutAbstractDelta
   }
   if (duplicatesDelta) {
     nextPayload.duplicates = (current.duplicates ?? 0) + duplicatesDelta
@@ -246,7 +253,11 @@ export const saveProjectCandidates = async (
   }
 
   await updateDoc(getProjectDocRef(projectId), { updatedAt: Date.now() })
-  await ensurePrismaCounters(projectId, { identifiedDelta: papers.length, duplicatesDelta: duplicates })
+  await ensurePrismaCounters(projectId, {
+    identifiedDelta: papers.length,
+    duplicatesDelta: duplicates,
+    withoutAbstractDelta: withoutAbstract,
+  })
 
   return { saved: newCandidates.length, duplicates, withoutAbstract }
 }
