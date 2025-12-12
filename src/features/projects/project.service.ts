@@ -328,7 +328,7 @@ export const listenToQualityAssessments = (
 
 export const saveQualityAssessment = async (projectId: string, assessment: QualityAssessment) => {
   const assessmentRef = doc(getQualityAssessmentsCollection(projectId), assessment.id)
-  const includedRef = doc(getIncludedCollection(projectId), assessment.studyId)
+  const includedRef = getIncludedDocRef(projectId, assessment.studyId)
 
   await Promise.all([
     setDoc(assessmentRef, assessment, { merge: true }),
