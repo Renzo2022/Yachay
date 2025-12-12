@@ -116,6 +116,43 @@ export const ProjectLayout = () => {
               })}
             </nav>
 
+            {location.pathname.includes('/phase5') ? (
+              <aside className="border-4 border-black bg-neutral-100 shadow-brutal rounded-none p-5 space-y-4">
+                <header className="flex items-center justify-between">
+                  <h3 className="text-2xl font-black uppercase text-main">Fase 5</h3>
+                  <span className="text-xs font-mono uppercase tracking-[0.3em] text-black">Actividades</span>
+                </header>
+                <ul className="space-y-3">
+                  {(
+                    [
+                      { id: 'phase5-1', label: 'Extraer datos de artículos' },
+                      { id: 'phase5-2', label: 'Diseñar matriz de extracción' },
+                      { id: 'phase5-3', label: 'Codificar datos cualitativos y cuantitativos' },
+                    ] as const
+                  ).map((item, index) => {
+                    const completed = phaseProgress.phase5.completed
+                    const done = completed >= index + 1
+
+                    return (
+                      <li
+                        key={item.id}
+                        className={`flex items-center gap-3 border-3 border-black px-4 py-3 bg-white ${done ? 'bg-accent-success/30' : ''}`}
+                      >
+                        <span
+                          className={`w-6 h-6 border-3 border-black flex items-center justify-center font-black ${
+                            done ? 'bg-accent-success text-main' : 'bg-white'
+                          }`}
+                        >
+                          {done ? '✔' : ''}
+                        </span>
+                        <span className="font-mono text-sm text-main">{item.label}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </aside>
+            ) : null}
+
             {location.pathname.includes('/phase4') ? (
               <aside className="border-4 border-black bg-neutral-100 shadow-brutal rounded-none p-5 space-y-4">
                 <header className="flex items-center justify-between">

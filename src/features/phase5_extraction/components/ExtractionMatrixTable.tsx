@@ -30,7 +30,18 @@ export const ExtractionMatrixTable = ({ rows }: ExtractionMatrixTableProps) => {
       <table className="w-full border-collapse font-mono text-sm">
         <thead className="bg-[#FF005C] text-white sticky top-0">
           <tr>
-            {['Estudio', 'Muestra', 'Metodología', 'Intervención', 'Resultados', 'Limitaciones', 'Estado'].map((header) => (
+            {[
+              'Autor',
+              'Año',
+              'País',
+              'Tipo de estudio',
+              'Población',
+              'Variables',
+              'Resultados',
+              'Conclusiones',
+              'Nivel de evidencia',
+              'Estado',
+            ].map((header) => (
               <th key={header} className="border-2 border-black px-4 py-3 text-left uppercase tracking-wide text-xs">
                 {header}
               </th>
@@ -40,41 +51,31 @@ export const ExtractionMatrixTable = ({ rows }: ExtractionMatrixTableProps) => {
         <tbody>
           {rows.map(({ study, extraction }) => {
             const statusKey = extraction?.status ?? 'empty'
+            const authors = Array.isArray(study.authors) && study.authors.length ? study.authors.join(', ') : '—'
+            const year = study.year || extraction?.context?.year || '—'
+            const country = extraction?.context?.country?.trim() ? extraction.context.country.trim() : '—'
+            const studyType = study.studyType ?? '—'
+            const population = extraction?.sample?.description?.trim() ? extraction.sample.description.trim() : '—'
+            const variables = extraction?.variables?.length ? extraction.variables.join(', ') : '—'
+            const results = extraction?.outcomes?.results?.trim() ? extraction.outcomes.results.trim() : '—'
+            const conclusions = extraction?.conclusions?.trim() ? extraction.conclusions.trim() : '—'
+            const evidenceLevel = study.qualityLevel ?? '—'
             return (
               <tr key={study.id} className="odd:bg-neutral-50">
                 <td className="border-2 border-black px-4 py-3">
-                  <p className="text-base font-black text-neutral-900">{study.title}</p>
-                  <p className="text-xs text-neutral-600">
-                    {study.authors.join(', ')} · {study.year}
-                  </p>
+                  <p className="text-base font-black text-neutral-900">{authors}</p>
+                  <p className="text-xs text-neutral-600 line-clamp-2">{study.title}</p>
                 </td>
                 <td className="border-2 border-black px-4 py-3">
-                  <p className="font-bold text-lg">{extraction?.sample.size ?? '—'}</p>
-                  <p className="text-xs text-neutral-600">{extraction?.sample.description ?? 'Sin registrar'}</p>
+                  {year}
                 </td>
-                <td className="border-2 border-black px-4 py-3">
-                  <p className="font-semibold">{extraction?.methodology.design ?? '—'}</p>
-                  <p className="text-xs text-neutral-600">{extraction?.methodology.duration ?? '—'}</p>
-                </td>
-                <td className="border-2 border-black px-4 py-3">
-                  <p>{extraction?.intervention.description ?? '—'}</p>
-                  <p className="text-xs text-neutral-600">
-                    {extraction?.intervention.tools?.length ? extraction.intervention.tools.join(', ') : 'Sin herramientas'}
-                  </p>
-                </td>
-                <td className="border-2 border-black px-4 py-3">
-                  <p className="font-semibold">{extraction?.outcomes.primary ?? '—'}</p>
-                  <p className="text-xs text-neutral-600">{extraction?.outcomes.results ?? '—'}</p>
-                </td>
-                <td className="border-2 border-black px-4 py-3">
-                  <ul className="list-disc pl-4 space-y-1">
-                    {extraction?.limitations?.length ? (
-                      extraction.limitations.map((limitation, index) => <li key={`${study.id}-${index}`}>{limitation}</li>)
-                    ) : (
-                      <li className="text-neutral-500">Sin registrar</li>
-                    )}
-                  </ul>
-                </td>
+                <td className="border-2 border-black px-4 py-3">{country}</td>
+                <td className="border-2 border-black px-4 py-3">{studyType}</td>
+                <td className="border-2 border-black px-4 py-3">{population}</td>
+                <td className="border-2 border-black px-4 py-3">{variables}</td>
+                <td className="border-2 border-black px-4 py-3">{results}</td>
+                <td className="border-2 border-black px-4 py-3">{conclusions}</td>
+                <td className="border-2 border-black px-4 py-3">{evidenceLevel}</td>
                 <td className="border-2 border-black px-4 py-3">
                   <span className={`inline-flex items-center justify-center px-3 py-1 border-2 border-black text-xs uppercase tracking-wide ${statusColors[statusKey]}`}>
                     {statusKey === 'empty' ? 'Pendiente' : statusKey}

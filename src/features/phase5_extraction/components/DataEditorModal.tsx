@@ -16,6 +16,7 @@ interface DataEditorModalProps {
 export const DataEditorModal = ({ open, study, extraction, preview, onClose, onSave }: DataEditorModalProps) => {
   const [draft, setDraft] = useState<ExtractionData | null>(null)
   const [limitationInput, setLimitationInput] = useState('')
+  const [variablesInput, setVariablesInput] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -23,6 +24,7 @@ export const DataEditorModal = ({ open, study, extraction, preview, onClose, onS
     const base = extraction ?? createEmptyExtraction(study.id)
     setDraft(base)
     setLimitationInput(base.limitations.join('\n'))
+    setVariablesInput((base.variables ?? []).join(', '))
   }, [open, study, extraction])
 
   if (!open || !study || !draft) return null
@@ -37,6 +39,10 @@ export const DataEditorModal = ({ open, study, extraction, preview, onClose, onS
     try {
       const payload: ExtractionData = {
         ...draft,
+        variables: variablesInput
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
         limitations: limitationInput
           .split('\n')
           .map((item) => item.trim())
@@ -72,8 +78,76 @@ export const DataEditorModal = ({ open, study, extraction, preview, onClose, onS
           </div>
 
           <form className="bg-white p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-600">Autor</label>
+                <input
+                  type="text"
+                  className="border-3 border-black px-3 py-2 font-mono mt-2 bg-neutral-100"
+                  value={study.authors.join(', ')}
+                  readOnly
+                />
+              </div>
+              <div>
+                <label className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-600">Año</label>
+                <input
+                  type="text"
+                  className="border-3 border-black px-3 py-2 font-mono mt-2 bg-neutral-100"
+                  value={String(study.year ?? '')}
+                  readOnly
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-600">País</label>
+                <input
+                  type="text"
+                  className="border-3 border-black px-3 py-2 font-mono mt-2"
+                  value={draft.context?.country ?? ''}
+                  onChange={(event) =>
+                    updateDraft((current) => ({
+                      ...current,
+                      context: { ...(current.context ?? {}), country: event.target.value },
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-600">Tipo de estudio</label>
+                <input
+                  type="text"
+                  className="border-3 border-black px-3 py-2 font-mono mt-2 bg-neutral-100"
+                  value={study.studyType ?? ''}
+                  readOnly
+                />
+              </div>
+            </div>
+
             <div>
-              <label className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-600">Muestra</label>
+              <label className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-600">Nivel de evidencia</label>
+              <input
+                type="text"
+                className="border-3 border-black px-3 py-2 font-mono mt-2 bg-neutral-100 w-full"
+                value={study.qualityLevel ?? ''}
+                readOnly
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-600">Variables</label>
+              <input
+                type="text"
+                className="border-3 border-black px-3 py-2 font-mono w-full mt-2"
+                placeholder="Separadas por coma"
+                value={variablesInput}
+                onChange={(event) => setVariablesInput(event.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-600">Población</label>
               <div className="grid grid-cols-2 gap-3 mt-2">
                 <input
                   type="number"
@@ -169,20 +243,6 @@ export const DataEditorModal = ({ open, study, extraction, preview, onClose, onS
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-600">Resultado primario</label>
-                <textarea
-                  className="border-3 border-black px-3 py-2 font-mono w-full mt-2"
-                  rows={3}
-                  value={draft.outcomes.primary}
-                  onChange={(event) =>
-                    updateDraft((current) => ({
-                      ...current,
-                      outcomes: { ...current.outcomes, primary: event.target.value },
-                    }))
-                  }
-                />
-              </div>
-              <div>
                 <label className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-600">Resultados</label>
                 <textarea
                   className="border-3 border-black px-3 py-2 font-mono w-full mt-2"
@@ -192,6 +252,20 @@ export const DataEditorModal = ({ open, study, extraction, preview, onClose, onS
                     updateDraft((current) => ({
                       ...current,
                       outcomes: { ...current.outcomes, results: event.target.value },
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-600">Conclusiones</label>
+                <textarea
+                  className="border-3 border-black px-3 py-2 font-mono w-full mt-2"
+                  rows={3}
+                  value={draft.conclusions}
+                  onChange={(event) =>
+                    updateDraft((current) => ({
+                      ...current,
+                      conclusions: event.target.value,
                     }))
                   }
                 />
@@ -206,6 +280,125 @@ export const DataEditorModal = ({ open, study, extraction, preview, onClose, onS
                 value={limitationInput}
                 onChange={(event) => setLimitationInput(event.target.value)}
               />
+            </div>
+
+            <div className="border-t-4 border-black pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-600">Tabla de evidencia</label>
+                <button
+                  type="button"
+                  className="border-3 border-black px-3 py-1 font-mono text-xs uppercase bg-white"
+                  onClick={() =>
+                    updateDraft((current) => ({
+                      ...current,
+                      evidence: [
+                        {
+                          id: crypto.randomUUID(),
+                          variable: '',
+                          extracted: '',
+                          quote: '',
+                        },
+                        ...current.evidence,
+                      ],
+                    }))
+                  }
+                >
+                  + Añadir fila
+                </button>
+              </div>
+
+              <div className="mt-3 space-y-3">
+                {draft.evidence.length ? (
+                  draft.evidence.map((row) => (
+                    <div key={row.id} className="border-3 border-black p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-mono text-xs uppercase tracking-[0.3em] text-neutral-500">Evidencia</p>
+                        <button
+                          type="button"
+                          className="border-3 border-black px-2 py-1 font-mono text-xs uppercase bg-neutral-900 text-white"
+                          onClick={() =>
+                            updateDraft((current) => ({
+                              ...current,
+                              evidence: current.evidence.filter((item) => item.id !== row.id),
+                            }))
+                          }
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <input
+                          type="text"
+                          className="border-3 border-black px-3 py-2 font-mono"
+                          placeholder="Variable"
+                          value={row.variable}
+                          onChange={(event) =>
+                            updateDraft((current) => ({
+                              ...current,
+                              evidence: current.evidence.map((item) =>
+                                item.id === row.id ? { ...item, variable: event.target.value } : item,
+                              ),
+                            }))
+                          }
+                        />
+                        <input
+                          type="text"
+                          className="border-3 border-black px-3 py-2 font-mono"
+                          placeholder="Dato extraído"
+                          value={row.extracted}
+                          onChange={(event) =>
+                            updateDraft((current) => ({
+                              ...current,
+                              evidence: current.evidence.map((item) =>
+                                item.id === row.id ? { ...item, extracted: event.target.value } : item,
+                              ),
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3 mt-3">
+                        <textarea
+                          className="border-3 border-black px-3 py-2 font-mono w-full col-span-2"
+                          rows={3}
+                          placeholder='Evidencia textual ("quote")'
+                          value={row.quote}
+                          onChange={(event) =>
+                            updateDraft((current) => ({
+                              ...current,
+                              evidence: current.evidence.map((item) =>
+                                item.id === row.id ? { ...item, quote: event.target.value } : item,
+                              ),
+                            }))
+                          }
+                        />
+                        <input
+                          type="number"
+                          className="border-3 border-black px-3 py-2 font-mono"
+                          placeholder="Página"
+                          value={row.page ?? ''}
+                          onChange={(event) =>
+                            updateDraft((current) => ({
+                              ...current,
+                              evidence: current.evidence.map((item) =>
+                                item.id === row.id
+                                  ? {
+                                      ...item,
+                                      page: event.target.value ? Number(event.target.value) : undefined,
+                                    }
+                                  : item,
+                              ),
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm font-mono text-neutral-500">La IA aún no generó evidencias. Ejecuta Auto-Extraer.</p>
+                )}
+              </div>
             </div>
           </form>
         </div>

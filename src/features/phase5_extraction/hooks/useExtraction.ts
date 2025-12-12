@@ -4,11 +4,11 @@ import type { ExtractionData } from '../types.ts'
 import { createEmptyExtraction } from '../types.ts'
 import { listenToIncludedStudies, updateIncludedStudyRecord } from '../../projects/project.service.ts'
 import { listenToExtractionMatrix, saveExtractionEntry } from '../../../services/extraction.service.ts'
-import { extractTextFromPdf, truncateText } from '../../../services/pdf.service.ts'
+import { buildRagContext, extractTextFromPdf, truncateText } from '../../../services/pdf.service.ts'
 import { buildPdfProxyUrl, extractDataRAG, resolveUnpaywallPdf } from '../../../services/ai.service.ts'
 import { useToast } from '../../../core/toast/ToastProvider.tsx'
 
-export const RAG_STEPS = ['Leyendo PDF...', 'Truncando texto...', 'Consultando LLM...', 'Parseando JSON...']
+export const RAG_STEPS = ['Leyendo PDF...', 'Preparando contexto...', 'Consultando LLM...', 'Parseando JSON...']
 
 export type RagState = {
   studyId: string
@@ -31,9 +31,16 @@ export const useExtraction = (projectId: string) => {
 
     const unsubscribeStudies = listenToIncludedStudies(projectId, setStudies)
     const unsubscribeExtraction = listenToExtractionMatrix(projectId, (entries) => {
-      setExtractionList(entries)
+      const normalized = entries.map((entry) => ({
+        ...entry,
+        evidence: Array.isArray(entry.evidence) ? entry.evidence : [],
+        variables: Array.isArray(entry.variables) ? entry.variables : [],
+        conclusions: typeof entry.conclusions === 'string' ? entry.conclusions : '',
+      }))
+
+      setExtractionList(normalized)
       setExtractions(
-        entries.reduce<Record<string, ExtractionData>>((acc, entry) => {
+        normalized.reduce<Record<string, ExtractionData>>((acc, entry) => {
           acc[entry.studyId] = entry
           return acc
         }, {}),
@@ -111,22 +118,40 @@ export const useExtraction = (projectId: string) => {
         updateStep(0)
         const rawText = await extractTextFromPdf(pdfSource)
         updateStep(1)
-        const truncated = truncateText(rawText)
-        setLastPreview(truncated.slice(0, 1200))
+        const ragContext = buildRagContext(rawText)
+        setLastPreview(truncateText(ragContext, 2400).slice(0, 2400))
         updateStep(2)
-        const payload = await extractDataRAG(truncated)
+        const payload = await extractDataRAG(ragContext)
         updateStep(3)
 
         const existing = getExtractionForStudy(study.id)
+
+        const evidence = (payload.evidence ?? []).map((row) => ({
+          id: crypto.randomUUID(),
+          variable: row.variable,
+          extracted: row.extracted,
+          quote: row.quote,
+          page: row.page,
+        }))
+
+        const entryBase = {
+          variables: Array.isArray(payload.variables) ? payload.variables : [],
+          conclusions: typeof payload.conclusions === 'string' ? payload.conclusions : '',
+        }
+
         const entry: ExtractionData = existing
           ? {
               ...existing,
               ...payload,
+              ...entryBase,
+              evidence,
               status: 'extracted',
             }
           : {
               ...createEmptyExtraction(study.id),
               ...payload,
+              ...entryBase,
+              evidence,
               status: 'extracted',
             }
 

@@ -136,6 +136,88 @@ const COHERE_CLASSIFICATION_SCHEMA = {
   },
 };
 
+const COHERE_EXTRACTION_SCHEMA = {
+  type: "json_object",
+  schema: {
+    type: "object",
+    properties: {
+      evidence: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            variable: { type: "string" },
+            extracted: { type: "string" },
+            quote: { type: "string" },
+            page: { type: "number" },
+          },
+          required: ["variable", "extracted", "quote"],
+          additionalProperties: false,
+        },
+      },
+      variables: { type: "array", items: { type: "string" } },
+      sample: {
+        type: "object",
+        properties: {
+          size: { type: "number" },
+          description: { type: "string" },
+        },
+        required: ["size", "description"],
+        additionalProperties: false,
+      },
+      methodology: {
+        type: "object",
+        properties: {
+          design: { type: "string" },
+          duration: { type: "string" },
+        },
+        required: ["design", "duration"],
+        additionalProperties: false,
+      },
+      intervention: {
+        type: "object",
+        properties: {
+          description: { type: "string" },
+          tools: { type: "array", items: { type: "string" } },
+        },
+        required: ["description", "tools"],
+        additionalProperties: false,
+      },
+      outcomes: {
+        type: "object",
+        properties: {
+          primary: { type: "string" },
+          results: { type: "string" },
+        },
+        required: ["primary", "results"],
+        additionalProperties: false,
+      },
+      conclusions: { type: "string" },
+      limitations: { type: "array", items: { type: "string" } },
+      context: {
+        type: "object",
+        properties: {
+          year: { type: "number" },
+          country: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+      effect: {
+        type: "object",
+        properties: {
+          value: { type: "number" },
+          lower: { type: "number" },
+          upper: { type: "number" },
+        },
+        required: ["value", "lower", "upper"],
+        additionalProperties: false,
+      },
+    },
+    required: ["evidence", "variables", "sample", "methodology", "intervention", "outcomes", "conclusions", "limitations"],
+    additionalProperties: false,
+  },
+};
+
 const QUALITY_QUESTION_BANK = {
   CASP: [
     "¿La pregunta de investigación está claramente definida?",
@@ -314,6 +396,70 @@ app.get("/unpaywall/resolve", async (req, res) => {
   }
 });
 
+app.post("/cohere/extraction", async (req, res) => {
+  const pdfText = req.body?.pdfText;
+  if (!pdfText) {
+    res.status(400).json({ error: "Missing pdfText" });
+    return;
+  }
+
+  try {
+    const cohere = ensureCohere();
+
+    const prompt = `Extrae información del siguiente texto y responde con el esquema EXACTO indicado.
+
+Debes devolver EXCLUSIVAMENTE JSON válido.
+
+Reglas:
+- evidence debe incluir al menos 3 filas si el texto lo permite.
+- variables debe listar las variables principales evaluadas o reportadas (si aplica).
+- quote debe ser una cita textual corta (máx. 240 caracteres).
+- Si no encuentras un dato, usa string vacío o 0, pero mantén la estructura.
+
+Texto:
+${pdfText.slice(0, 12000)}`;
+
+    const response = await cohere.chat({
+      model: COHERE_MODEL,
+      message: prompt,
+      temperature: 0.1,
+      response_format: COHERE_EXTRACTION_SCHEMA,
+    });
+
+    const contentParts = response?.message?.content ?? [];
+    const jsonPart = contentParts.find((part) => part?.json);
+    const textBlob =
+      contentParts.map((part) => part?.text ?? "").join("\n").trim() ||
+      response?.text ||
+      response?.message?.content?.[0]?.text ||
+      "";
+
+    const payload =
+      jsonPart?.json ??
+      (() => {
+        if (!textBlob) return null;
+        try {
+          return parseJsonSafe(textBlob);
+        } catch {
+          return null;
+        }
+      })();
+
+    if (!payload || typeof payload !== "object") {
+      console.error("Cohere extraction payload inválido", JSON.stringify({ payload, textBlob }, null, 2));
+      throw new Error("Cohere devolvió un formato inesperado para extraction.");
+    }
+
+    res.json(payload);
+  } catch (error) {
+    console.error("/cohere/extraction", error);
+    res.status(500).json({
+      error: "Cohere extraction failed",
+      details: error?.message ?? "Unknown Cohere error",
+    });
+  }
+});
+
 app.get("/pdf/proxy", async (req, res) => {
   const url = req.query.url?.toString();
   if (!url) {
@@ -431,18 +577,32 @@ app.post("/groq/extraction", async (req, res) => {
       messages: [
         {
           role: "system",
-          content: "Eres un especialista en extracción de datos. Responde sólo JSON válido.",
+          content:
+            "Eres un especialista en extracción de datos para revisiones sistemáticas. Responde SOLO JSON válido (sin markdown, sin texto extra).",
         },
         {
           role: "user",
-          content: `Resume el siguiente texto con este esquema:
+          content: `Extrae información del siguiente texto y responde con este esquema EXACTO:
 {
+  "evidence": [
+    {"variable": string, "extracted": string, "quote": string, "page"?: number}
+  ],
+  "variables": string[],
   "sample": {"size": number, "description": string},
   "methodology": {"design": string, "duration": string},
   "intervention": {"description": string, "tools": string[]},
   "outcomes": {"primary": string, "results": string},
-  "limitations": string[]
+  "conclusions": string,
+  "limitations": string[],
+  "context"?: {"year"?: number, "country"?: string},
+  "effect"?: {"value": number, "lower": number, "upper": number}
 }
+
+Reglas:
+- "evidence" debe incluir al menos 3 filas si el texto lo permite.
+- "variables" debe listar las variables principales evaluadas o reportadas (si aplica).
+- "quote" debe ser una cita textual corta (máx. 240 caracteres).
+- Si no encuentras un dato, usa string vacío o 0, pero mantén la estructura.
 
 Texto:
 ${pdfText.slice(0, 12000)}`,

@@ -344,6 +344,7 @@ export const saveQualityAssessment = async (projectId: string, assessment: Quali
       includedRef,
       {
         qualityStatus: 'completed',
+        studyType: assessment.studyType,
         qualityLevel: assessment.qualityLevel,
         qualityScore: assessment.totalScore,
       },

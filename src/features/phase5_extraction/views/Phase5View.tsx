@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import confetti from 'canvas-confetti'
 import { useProject } from '../../projects/ProjectContext.tsx'
 import type { Candidate } from '../../projects/types.ts'
+import { BrutalButton } from '../../../core/ui-kit/BrutalButton.tsx'
 import { ExtractionCard } from '../components/ExtractionCard.tsx'
 import { ExtractionMatrixTable } from '../components/ExtractionMatrixTable.tsx'
 import { DataEditorModal } from '../components/DataEditorModal.tsx'
@@ -25,6 +26,8 @@ export const Phase5View = () => {
   const project = useProject()
   const [activeTab, setActiveTab] = useState<'list' | 'matrix'>('list')
   const [selectedStudy, setSelectedStudy] = useState<Candidate | null>(null)
+  const [batchRunning, setBatchRunning] = useState(false)
+  const [batchStatus, setBatchStatus] = useState<string | null>(null)
 
   const { studies, getExtractionForStudy, autoExtract, saveExtraction, ragState, error, clearError, lastPreview, stats } =
     useExtraction(project.id)
@@ -44,6 +47,34 @@ export const Phase5View = () => {
     fireConfetti()
   }
 
+  const handleExtractAll = async () => {
+    if (batchRunning) return
+    setBatchRunning(true)
+    setBatchStatus('Iniciando extracción masiva…')
+
+    try {
+      const pending = studies.filter((study) => {
+        const existing = getExtractionForStudy(study.id)
+        return !existing || existing.status === 'empty'
+      })
+
+      for (let index = 0; index < pending.length; index += 1) {
+        const study = pending[index]
+        setBatchStatus(`Extrayendo ${index + 1}/${pending.length}…`)
+        try {
+          await autoExtract(study)
+        } catch {
+        }
+      }
+
+      setBatchStatus('Extracción masiva completada')
+      fireConfetti()
+      setTimeout(() => setBatchStatus(null), 2000)
+    } finally {
+      setBatchRunning(false)
+    }
+  }
+
   const processingStudyId = ragState?.studyId
 
   return (
@@ -56,11 +87,22 @@ export const Phase5View = () => {
             Usa la IA para obtener un borrador y luego ajusta manualmente cada campo antes de verificar los datos.
           </p>
         </div>
-        <div className="border-3 border-black px-4 py-3 bg-neutral-100">
-          <p className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-500">Estado global</p>
-          <p className="text-xl font-black text-neutral-900">
-            {stats.verified} verificados · {stats.extracted} en progreso · {stats.empty} pendientes
-          </p>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <div className="border-3 border-black px-4 py-3 bg-neutral-100">
+            <p className="text-xs font-mono uppercase tracking-[0.3em] text-neutral-500">Estado global</p>
+            <p className="text-xl font-black text-neutral-900">
+              {stats.verified} verificados · {stats.extracted} en progreso · {stats.empty} pendientes
+            </p>
+            {batchStatus ? <p className="text-xs font-mono text-neutral-600 mt-1">{batchStatus}</p> : null}
+          </div>
+          <BrutalButton
+            variant="primary"
+            className="bg-accent-primary text-white"
+            onClick={handleExtractAll}
+            disabled={batchRunning || studies.length === 0}
+          >
+            {batchRunning ? 'Extrayendo…' : '⚡ Extraer todo con IA'}
+          </BrutalButton>
         </div>
       </header>
 

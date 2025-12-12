@@ -1,6 +1,8 @@
 export interface ExtractionData {
   id: string
   studyId: string
+  evidence: EvidenceRow[]
+  variables: string[]
   sample: {
     size: number
     description: string
@@ -17,6 +19,7 @@ export interface ExtractionData {
     primary: string
     results: string
   }
+  conclusions: string
   limitations: string[]
   status: 'empty' | 'extracted' | 'verified'
   context?: {
@@ -30,11 +33,39 @@ export interface ExtractionData {
   }
 }
 
-export type ExtractionPayload = Omit<ExtractionData, 'id' | 'studyId' | 'status'>
+export interface EvidenceRow {
+  id: string
+  variable: string
+  extracted: string
+  quote: string
+  page?: number
+}
+
+export interface EvidenceRowPayload {
+  variable: string
+  extracted: string
+  quote: string
+  page?: number
+}
+
+export interface ExtractionPayload {
+  evidence: EvidenceRowPayload[]
+  variables: ExtractionData['variables']
+  sample: ExtractionData['sample']
+  methodology: ExtractionData['methodology']
+  intervention: ExtractionData['intervention']
+  outcomes: ExtractionData['outcomes']
+  conclusions: ExtractionData['conclusions']
+  limitations: ExtractionData['limitations']
+  context?: ExtractionData['context']
+  effect?: ExtractionData['effect']
+}
 
 export const createEmptyExtraction = (studyId: string): ExtractionData => ({
   id: crypto.randomUUID(),
   studyId,
+  evidence: [],
+  variables: [],
   sample: {
     size: 0,
     description: '',
@@ -51,12 +82,8 @@ export const createEmptyExtraction = (studyId: string): ExtractionData => ({
     primary: '',
     results: '',
   },
+  conclusions: '',
   limitations: [],
   status: 'empty',
   context: {},
-  effect: {
-    value: 0,
-    lower: -0.5,
-    upper: 0.5,
-  },
 })

@@ -78,9 +78,12 @@ const computePhase4Completion = (quality: QualityAssessment[], included: Candida
 const computePhase5Completion = (extractions: ExtractionData[], included: Candidate[]): number => {
   const target = included.length || extractions.length
   if (target === 0) return 0
-  const verified = extractions.filter((entry) => entry.status === 'verified').length
-  const ratio = verified / target
-  return Math.min(PHASE_TASKS.phase5, Math.round(ratio * PHASE_TASKS.phase5))
+
+  const extractedCount = extractions.filter((entry) => entry.status === 'extracted' || entry.status === 'verified').length
+  const verifiedCount = extractions.filter((entry) => entry.status === 'verified').length
+
+  const steps = [extractedCount > 0, extractedCount >= target, verifiedCount >= target]
+  return Math.min(PHASE_TASKS.phase5, steps.filter(Boolean).length)
 }
 
 const computePhase6Completion = (synthesis: SynthesisData): number => {

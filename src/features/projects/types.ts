@@ -1,6 +1,6 @@
 import { createPhase1Defaults, type Phase1Data } from '../phase1_planning/types.ts'
 import type { ExternalPaper, ExternalSource, Phase2Strategy } from '../phase2_search/types.ts'
-import type { QualityLevel } from '../phase4_quality/types.ts'
+import type { QualityLevel, StudyType } from '../phase4_quality/types.ts'
 
 export type PhaseKey = 'phase1' | 'phase2' | 'phase3' | 'phase4' | 'phase5' | 'phase6' | 'phase7'
 
@@ -65,6 +65,7 @@ export interface Candidate extends ExternalPaper {
   processedAt?: number
   savedAt: number
   qualityStatus?: 'pending' | 'completed'
+  studyType?: StudyType
   qualityLevel?: QualityLevel
   qualityScore?: number
   pdfUrl?: string

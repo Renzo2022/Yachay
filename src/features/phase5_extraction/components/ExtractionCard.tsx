@@ -83,7 +83,7 @@ export const ExtractionCard = ({ study, extraction, onAutoExtract, onEdit, proce
 
       {!extraction && (
         <div
-          className={`border-4 border-dashed border-black bg-neutral-50 text-center p-6 font-mono text-sm uppercase tracking-[0.3em] ${
+          className={`border-4 border-dashed border-black bg-neutral-50 text-black text-center p-6 font-mono text-sm uppercase tracking-[0.3em] ${
             dragOver ? 'bg-accent-primary/20' : ''
           }`}
           onDragOver={(event) => {

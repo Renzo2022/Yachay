@@ -369,6 +369,19 @@ export const generatePhase1Protocol = async (topic: string): Promise<Phase1Data>
 }
 
 const SAMPLE_EXTRACTION: ExtractionPayload = {
+  evidence: [
+    {
+      variable: 'Muestra',
+      extracted: '128 participantes (control/experimental)',
+      quote: '... divided into control and experimental groups (n = 128) ...',
+    },
+    {
+      variable: 'Resultado principal',
+      extracted: 'Mejora del 18% en precisión de evaluaciones',
+      quote: 'The intervention improved evaluation accuracy by 18% compared to baseline...',
+    },
+  ],
+  variables: ['Muestra', 'Resultado principal'],
   sample: {
     size: 128,
     description: 'Docentes universitarios y estudiantes de ingeniería divididos en grupos control y experimental.',
@@ -385,6 +398,8 @@ const SAMPLE_EXTRACTION: ExtractionPayload = {
     primary: 'Mejora del 18% en precisión de evaluaciones y reducción de 22% en tiempos de retroalimentación.',
     results: 'p < 0.05 para métricas de coherencia y satisfacción estudiantil.',
   },
+  conclusions:
+    'La intervención basada en IA mostró mejoras significativas en precisión y eficiencia de retroalimentación; se recomienda validar en múltiples contextos y con seguimiento longitudinal.',
   limitations: ['Muestra concentrada en un solo país', 'Sin seguimiento longitudinal'],
 }
 
@@ -395,7 +410,7 @@ export const extractDataRAG = async (pdfText: string): Promise<ExtractionPayload
   }
 
   try {
-    return await proxyPost<ExtractionPayload>('/groq/extraction', { pdfText })
+    return await proxyPost<ExtractionPayload>('/cohere/extraction', { pdfText })
   } catch (error) {
     console.error('extractDataRAG error', error)
     await delay(800)
