@@ -23,6 +23,8 @@ export interface CaspCriterion {
 
 export type QualityLevel = 'High' | 'Medium' | 'Low'
 
+export type QualityAssessmentOrigin = 'manual' | 'ai'
+
 export interface QualityAssessment {
   id: string
   studyId: string
@@ -32,4 +34,6 @@ export interface QualityAssessment {
   totalScore: number
   qualityLevel: QualityLevel
   assessedAt: number
+  origin?: QualityAssessmentOrigin
+  locked?: boolean
 }

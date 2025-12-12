@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Link, NavLink, Outlet, useParams } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useParams } from 'react-router-dom'
 import { ProjectProvider } from '../ProjectContext.tsx'
 import type { PhaseKey } from '../types.ts'
 import { BrutalButton } from '../../../core/ui-kit/BrutalButton.tsx'
@@ -10,6 +10,7 @@ const phaseEntries = Object.entries(phaseMetadata) as [PhaseKey, (typeof phaseMe
 
 export const ProjectLayout = () => {
   const { projectId } = useParams<{ projectId: string }>()
+  const location = useLocation()
   const { project, loading, progressPercent, phaseProgress, currentPhase } = useProjectProgress(projectId)
 
   const currentPhaseLabel = useMemo(() => phaseMetadata[currentPhase]?.label ?? 'Fase', [currentPhase])
@@ -88,9 +89,13 @@ export const ProjectLayout = () => {
             <nav className="flex flex-col gap-3">
               {phaseEntries.map(([phaseKey, metadata]) => {
                 const state = getPhaseState(phaseKey)
-                const icon =
-                  state === 'done' ? '✅' : state === 'active' ? '🔵' : '🔒'
                 const destination = `/project/${projectId}/${metadata.route}`
+
+                const isRouteActive = location.pathname === destination
+                const visualState = state === 'done' ? 'done' : isRouteActive ? 'active' : state
+                const icon = visualState === 'done' ? '✅' : visualState === 'active' ? '🔵' : '🔒'
+                const iconClass =
+                  visualState === 'done' ? 'text-green-600' : visualState === 'active' ? 'text-blue-600' : 'text-neutral-500'
 
                 return (
                   <NavLink
@@ -105,13 +110,48 @@ export const ProjectLayout = () => {
                     }
                   >
                     <span>{metadata.label}</span>
-                    <span className={state === 'done' ? 'text-green-600' : state === 'active' ? 'text-blue-600' : 'text-neutral-500'}>
-                      {icon}
-                    </span>
+                    <span className={iconClass}>{icon}</span>
                   </NavLink>
                 )
               })}
             </nav>
+
+            {location.pathname.includes('/phase4') ? (
+              <aside className="border-4 border-black bg-neutral-100 shadow-brutal rounded-none p-5 space-y-4">
+                <header className="flex items-center justify-between">
+                  <h3 className="text-2xl font-black uppercase text-main">Fase 4</h3>
+                  <span className="text-xs font-mono uppercase tracking-[0.3em] text-black">Checklist</span>
+                </header>
+                <ul className="space-y-3">
+                  {(
+                    [
+                      { id: 'phase4-1', label: 'Clasificar tipo de estudio' },
+                      { id: 'phase4-2', label: 'Aplicar checklist de calidad (CASP / AMSTAR / STROBE)' },
+                      { id: 'phase4-3', label: 'Asignar nivel de calidad' },
+                    ] as const
+                  ).map((item, index) => {
+                    const completed = phaseProgress.phase4.completed
+                    const done = completed >= index + 1
+
+                    return (
+                      <li
+                        key={item.id}
+                        className={`flex items-center gap-3 border-3 border-black px-4 py-3 bg-white ${done ? 'bg-accent-success/30' : ''}`}
+                      >
+                        <span
+                          className={`w-6 h-6 border-3 border-black flex items-center justify-center font-black ${
+                            done ? 'bg-accent-success text-main' : 'bg-white'
+                          }`}
+                        >
+                          {done ? '✔' : ''}
+                        </span>
+                        <span className="font-mono text-sm text-main">{item.label}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </aside>
+            ) : null}
             <div id="phase3-checklist-slot" className="space-y-4" />
           </aside>
 

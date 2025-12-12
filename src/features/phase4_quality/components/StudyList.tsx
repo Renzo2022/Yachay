@@ -32,6 +32,7 @@ export const StudyList = ({ studies, onEvaluate, getAssessment }: StudyListProps
     <div className="space-y-4">
       {studies.map((study) => {
         const assessment = getAssessment(study.id)
+        const isLocked = Boolean(assessment?.locked || assessment?.origin === 'ai')
         const maxScore = assessment?.criteria?.length ?? 0
         const qualityScore = assessment ? `${assessment.totalScore}/${maxScore || '—'}` : '—'
 
@@ -63,7 +64,7 @@ export const StudyList = ({ studies, onEvaluate, getAssessment }: StudyListProps
                   onClick={() => onEvaluate(study)}
                   className="inline-flex items-center justify-center gap-2 border-3 border-black bg-white text-black px-4 py-2 font-mono uppercase tracking-tight shadow-[4px_4px_0_0_#111] hover:-translate-y-1 hover:-translate-x-1 active:translate-x-0 active:translate-y-0"
                 >
-                  ✏️ Editar
+                  {isLocked ? '👁️ Visualizar' : '✏️ Editar'}
                 </button>
               </div>
             ) : (

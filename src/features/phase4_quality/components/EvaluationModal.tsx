@@ -37,6 +37,7 @@ const levelLabel: Record<string, string> = {
 interface EvaluationModalProps {
   open: boolean
   study: Candidate | null
+  readOnly?: boolean
   onClose: () => void
   saveAssessment: (payload: {
     studyId: string
@@ -54,6 +55,7 @@ interface EvaluationModalProps {
 export const EvaluationModal = ({
   open,
   study,
+  readOnly,
   onClose,
   saveAssessment,
   calculateScore,
@@ -61,6 +63,7 @@ export const EvaluationModal = ({
   defaultCriteria,
   existing,
 }: EvaluationModalProps) => {
+  const isReadOnly = Boolean(readOnly || existing?.locked)
   const [studyType, setStudyType] = useState<StudyType>('RCT')
   const [checklistType, setChecklistType] = useState<ChecklistType>('CASP')
   const [criteria, setCriteria] = useState<CaspCriterion[]>(() => defaultCriteria('CASP'))
@@ -78,6 +81,7 @@ export const EvaluationModal = ({
   const level = useMemo(() => determineLevel(score, criteria.length), [score, criteria.length, determineLevel])
 
   const updateAnswer = (criterionId: string, value: CaspAnswer) => {
+    if (isReadOnly) return
     setCriteria((prev) =>
       prev.map((criterion) =>
         criterion.id === criterionId
@@ -91,18 +95,21 @@ export const EvaluationModal = ({
   }
 
   const updateNotes = (criterionId: string, notes: string) => {
+    if (isReadOnly) return
     setCriteria((prev) =>
       prev.map((criterion) => (criterion.id === criterionId ? { ...criterion, notes } : criterion)),
     )
   }
 
   const updateEvidence = (criterionId: string, evidence: string) => {
+    if (isReadOnly) return
     setCriteria((prev) =>
       prev.map((criterion) => (criterion.id === criterionId ? { ...criterion, evidence } : criterion)),
     )
   }
 
   const updateJustification = (criterionId: string, justification: string) => {
+    if (isReadOnly) return
     setCriteria((prev) =>
       prev.map((criterion) => (criterion.id === criterionId ? { ...criterion, justification } : criterion)),
     )
@@ -110,6 +117,7 @@ export const EvaluationModal = ({
 
   const handleSave = async () => {
     if (!study) return
+    if (isReadOnly) return
     setIsSaving(true)
     try {
       await saveAssessment({
@@ -132,7 +140,7 @@ export const EvaluationModal = ({
       <div className="w-full max-w-4xl border-4 border-black bg-neutral-50 shadow-[12px_12px_0_0_#111] max-h-[90vh] overflow-y-auto">
         <header className="border-b-4 border-black bg-purple-500 text-white px-6 py-4 flex items-center justify-between">
           <div>
-            <p className="text-xs font-mono uppercase tracking-[0.3em]">Evaluando</p>
+            <p className="text-xs font-mono uppercase tracking-[0.3em]">{isReadOnly ? 'Visualizando' : 'Evaluando'}</p>
             <h2 className="text-2xl font-black">{study.title}</h2>
           </div>
           <button onClick={onClose} className="font-mono text-xl border-3 border-white px-3 py-1">
@@ -153,12 +161,14 @@ export const EvaluationModal = ({
                 <button
                   key={type}
                   type="button"
+                  disabled={isReadOnly}
                   className={`border-3 border-black px-4 py-3 font-mono uppercase tracking-tight shadow-[4px_4px_0_0_#111] transition-transform ${
                     checklistType === type
                       ? 'bg-purple-500 text-black translate-x-[-2px] translate-y-[-2px]'
                       : 'bg-white text-black'
                   }`}
                   onClick={() => {
+                    if (isReadOnly) return
                     setChecklistType(type)
                     const shouldReuseExisting = Boolean(existing && existing.checklistType === type)
                     setCriteria(shouldReuseExisting ? (existing?.criteria ?? defaultCriteria(type)) : defaultCriteria(type))
@@ -177,12 +187,16 @@ export const EvaluationModal = ({
                 <button
                   key={type}
                   type="button"
+                  disabled={isReadOnly}
                   className={`border-3 border-black px-4 py-3 font-mono uppercase tracking-tight shadow-[4px_4px_0_0_#111] transition-transform ${
                     studyType === type
                       ? 'bg-purple-500 text-black translate-x-[-2px] translate-y-[-2px]'
                       : 'bg-white text-black'
                   }`}
-                  onClick={() => setStudyType(type)}
+                  onClick={() => {
+                    if (isReadOnly) return
+                    setStudyType(type)
+                  }}
                 >
                   {type}
                 </button>
@@ -199,6 +213,7 @@ export const EvaluationModal = ({
                     <button
                       key={option.value}
                       type="button"
+                      disabled={isReadOnly}
                       onClick={() => updateAnswer(criterion.id, option.value)}
                       className={`px-4 py-3 border-3 border-black font-mono uppercase tracking-tight ${
                         option.className
@@ -216,6 +231,7 @@ export const EvaluationModal = ({
                   rows={2}
                   value={criterion.evidence ?? ''}
                   onChange={(event) => updateEvidence(criterion.id, event.target.value)}
+                  readOnly={isReadOnly}
                 />
                 <textarea
                   className="w-full border-3 border-black bg-neutral-100 p-3 font-mono text-sm"
@@ -223,6 +239,7 @@ export const EvaluationModal = ({
                   rows={2}
                   value={criterion.justification ?? ''}
                   onChange={(event) => updateJustification(criterion.id, event.target.value)}
+                  readOnly={isReadOnly}
                 />
                 <textarea
                   className="w-full border-3 border-black bg-neutral-100 p-3 font-mono text-sm"
@@ -230,6 +247,7 @@ export const EvaluationModal = ({
                   rows={2}
                   value={criterion.notes ?? ''}
                   onChange={(event) => updateNotes(criterion.id, event.target.value)}
+                  readOnly={isReadOnly}
                 />
               </div>
             ))}
@@ -270,16 +288,18 @@ export const EvaluationModal = ({
           </div>
           <div className="ml-auto flex gap-3">
             <BrutalButton variant="secondary" onClick={onClose} className="bg-white text-black border-black">
-              Cancelar
+              {isReadOnly ? 'Cerrar' : 'Cancelar'}
             </BrutalButton>
-            <BrutalButton
-              variant="primary"
-              className="bg-purple-500 text-white border-black"
-              onClick={handleSave}
-              disabled={isSaving}
-            >
-              {isSaving ? 'Guardando...' : 'Guardar evaluación'}
-            </BrutalButton>
+            {!isReadOnly ? (
+              <BrutalButton
+                variant="primary"
+                className="bg-purple-500 text-white border-black"
+                onClick={handleSave}
+                disabled={isSaving}
+              >
+                {isSaving ? 'Guardando...' : 'Guardar evaluación'}
+              </BrutalButton>
+            ) : null}
           </div>
         </footer>
       </div>

@@ -5,6 +5,7 @@ import type {
   CaspAnswer,
   ChecklistType,
   QualityAssessment,
+  QualityAssessmentOrigin,
   QualityLevel,
   StudyType,
 } from '../types.ts'
@@ -81,6 +82,8 @@ export const useQuality = (projectId: string) => {
         items.map((assessment) => ({
           ...assessment,
           checklistType: assessment.checklistType ?? 'CASP',
+          origin: assessment.origin ?? 'manual',
+          locked: assessment.locked ?? false,
         })),
       )
     })
@@ -127,6 +130,8 @@ export const useQuality = (projectId: string) => {
     checklistType: ChecklistType
     criteria: CaspCriterion[]
     assessmentId?: string
+    origin?: QualityAssessmentOrigin
+    locked?: boolean
   }) => {
     const totalScore = calculateScore(input.criteria)
     const qualityLevel = determineLevel(totalScore, input.criteria.length)
@@ -139,6 +144,8 @@ export const useQuality = (projectId: string) => {
       totalScore,
       qualityLevel,
       assessedAt: Date.now(),
+      origin: input.origin ?? 'manual',
+      locked: input.locked ?? false,
     }
 
     await saveQualityAssessment(projectId, assessment)
